@@ -1,3 +1,5 @@
+#include <graphicsh.hpp>
+
 #include <window.hpp>
 #include <math.hpp>
 #include <ecs.hpp>
@@ -1740,6 +1742,117 @@ void create_ui() {
                         vertices.draw_vertices(GL_LINES);
                     }
 
+                    point += event->transform_a.position;
+
+                    { // bounding boxes
+                        std::vector<vec3> vv = {
+                            vec3(0.0f, 0.0f, 0.0f),
+                            vec3(1.0f, 0.0f, 0.0f),
+                            vec3(0.0f, 1.0f, 0.0f),
+                            vec3(1.0f, 1.0f, 0.0f),
+                            vec3(0.0f, 0.0f, 1.0f),
+                            vec3(1.0f, 0.0f, 1.0f),
+                            vec3(0.0f, 1.0f, 1.0f),
+                            vec3(1.0f, 1.0f, 1.0f),
+                        };
+
+                        vv = {
+                            vv[0], vv[1],
+                            vv[2], vv[3],
+                            vv[4], vv[5],
+                            vv[6], vv[7],
+                            
+                            vv[0], vv[2],
+                            vv[1], vv[3],
+                            vv[4], vv[6],
+                            vv[5], vv[7],
+                            
+                            vv[0], vv[4],
+                            vv[1], vv[5],
+                            vv[2], vv[6],
+                            vv[3], vv[7],
+                        };
+
+                        axiom::bounding_box3d bba = axiom::transform_bounding_box(ca.bounding_box, ta.position, ta.orientation);
+                        axiom::bounding_box3d bbb = axiom::transform_bounding_box(cb.bounding_box, tb.position, tb.orientation);
+
+                        std::vector<axiom::color_vertex3d> cvs;
+
+                        for(vec3 v : vv) {
+                            cvs.push_back(axiom::color_vertex3d(v * (bba.maximum - bba.minimum) + bba.minimum - point, vec4(1.0f)));
+                        }
+                        for(vec3 v : vv) {
+                            cvs.push_back(axiom::color_vertex3d(v * (bbb.maximum - bbb.minimum) + bbb.minimum - point, vec4(1.0f)));
+                        }
+                    
+                        axiom::transform3d transform = {vec3(0.0f), glm::identity<mat3>()};
+                        mat4 model = axiom::get_model(transform, camera_transform);
+
+                        vertices.vertex_buffer_data(cvs.data(), cvs.size(), sizeof(axiom::color_vertex3d), GL_STREAM_DRAW);
+                        vertices.add_vertex_attribute(0, 3, GL_FLOAT, false, sizeof(axiom::color_vertex3d), 0);
+                        vertices.add_vertex_attribute(1, 4, GL_FLOAT, false, sizeof(axiom::color_vertex3d), sizeof(float) * 3);
+                        vertices.add_vertex_attribute(2, 3, GL_FLOAT, false, sizeof(axiom::color_vertex3d), sizeof(float) * 7);
+                        
+                        msystem.shaders["color3d"].use();
+                        vertices.bind();
+
+                        glUniformMatrix4fv(0, 1, false, &model[0][0]);
+                        glUniformMatrix4fv(1, 1, false, &view[0][0]);
+                        glUniformMatrix4fv(2, 1, false, &proj[0][0]);
+
+                        vertices.draw_vertices(GL_LINES);
+                    }
+
+                    { // points
+                        std::vector<vec3> position;
+                        std::vector<vec4> tex_range;
+                        std::vector<vec4> color;
+                        std::vector<vec2> size;
+
+                        for(auto& cca : ca.collision_shapes) {
+                            std::vector<axiom::vertex_element3d> vertices = cca.elements;
+
+                            axiom::transform3d tta = ta;
+                            tta.position += tta.orientation * cca.position;
+                            tta.orientation = tta.orientation * cca.orientation;
+                            axiom::transform_vertices(vertices, tta, vec3(0.0f));
+
+                            for(axiom::vertex_element3d v : vertices) {
+                                position.push_back(v.center - point);
+                                tex_range.push_back(vec4(54, 96, 6, 6));
+                                color.push_back(vec4(1.0f));
+                                size.push_back(vec2(6, 6));
+                            }
+                        }
+                        for(auto& ccb : cb.collision_shapes) {
+                            std::vector<axiom::vertex_element3d> vertices = ccb.elements;
+
+                            axiom::transform3d ttb = tb;
+                            ttb.position += ttb.orientation * ccb.position;
+                            ttb.orientation = ttb.orientation * ccb.orientation;
+                            axiom::transform_vertices(vertices, ttb, vec3(0.0f));
+
+                            for(axiom::vertex_element3d v : vertices) {
+                                position.push_back(v.center - point);
+                                tex_range.push_back(vec4(54, 96, 6, 6));
+                                color.push_back(vec4(1.0f));
+                                size.push_back(vec2(6, 6));
+                            }
+                        }
+                        
+                        position.push_back(ta.position - point);
+                        tex_range.push_back(vec4(48, 104, 8, 8));
+                        color.push_back(vec4(1.0f));
+                        size.push_back(vec2(8, 8));
+                        
+                        position.push_back(tb.position - point);
+                        tex_range.push_back(vec4(48, 104, 8, 8));
+                        color.push_back(vec4(1.0f));
+                        size.push_back(vec2(8, 8));
+
+                        render_billboards(camera, position, tex_range, color, size, f.size, msystem.textures["ui"]);
+                    }
+
                     glEnable(GL_DEPTH_TEST);
                 }
             }
@@ -2645,64 +2758,117 @@ void build_shape2d(vec2 pos, mat2 ori, std::vector<vec2> positions, std::vector<
     axiom::global_core.ecs->insert_component(entity, collider);
 }
 
-int main(int argc, char* argv[]) {
-    axiom::window win = axiom::window(ivec2(64, 64), ivec2(512, 512), 6, "axiom test", false);
+//
 
-    //
+void create_mesh(axiom::color_mesh3d& mesh, std::vector<axiom::vertex_element3d>& elements, vec3 color) {
+    std::vector<axiom::output_vertex> surface_vertices;
+    std::vector<uint> surface_indices;
+    axiom::create_mesh(elements, &surface_vertices, &surface_indices);
 
-    axiom::font_asset default_font = axiom::font_asset::load(resource_root + "fonts/axiom_default.bdf");
-    axiom::texture font_tex = std::move(axiom::texture(default_font.texture, axiom::texture_format::RGBA8));
+    std::unordered_map<uint, vec3> normals;
 
-    generate_placeholder();
+    for(uint i = 0; i < surface_indices.size(); i += 3) {
+        uint i0 = surface_indices[i];
+        uint i1 = surface_indices[i + 1];
+        uint i2 = surface_indices[i + 2];
 
-    //
+        axiom::output_vertex v0 = surface_vertices[i0];
+        axiom::output_vertex v1 = surface_vertices[i1];
+        axiom::output_vertex v2 = surface_vertices[i2];
 
-    win.hide_cursor();
+        vec3 scaled_normal = cross(v0.position - v2.position, v1.position - v2.position);
 
-    axiom::ecs ecs;
-    ecs.make_active();
+        if(v0.element != v1.element || v1.element != v2.element || v2.element != v0.element) {
+            i0 |= 0x80000000;
+            i1 |= 0x80000000;
+            i2 |= 0x80000000;
+        }
+        
+        if(!normals.contains(i0)) normals[i0] = vec3(0.0f);
+        if(!normals.contains(i1)) normals[i1] = vec3(0.0f);
+        if(!normals.contains(i2)) normals[i2] = vec3(0.0f);
+
+        if(!(elements[v0.element].radii.x + elements[v0.element].radii.y == 0.0f || 
+        elements[v0.element].radii.y + elements[v0.element].radii.z == 0.0f || 
+        elements[v0.element].radii.z + elements[v0.element].radii.x == 0.0f)) {
+            normals[i0] += scaled_normal;
+        }
+
+        if(!(elements[v1.element].radii.x + elements[v1.element].radii.y == 0.0f || 
+        elements[v1.element].radii.y + elements[v1.element].radii.z == 0.0f || 
+        elements[v1.element].radii.z + elements[v1.element].radii.x == 0.0f)) {
+            normals[i1] += scaled_normal;
+        }
+
+        if(!(elements[v2.element].radii.x + elements[v2.element].radii.y == 0.0f || 
+        elements[v2.element].radii.y + elements[v2.element].radii.z == 0.0f || 
+        elements[v2.element].radii.z + elements[v2.element].radii.x == 0.0f)) {
+            normals[i2] += scaled_normal;
+        }
+
+        //
+    };
+
+    for(auto& [key, normal] : normals) {
+        float len = length(normal);
+        if(len != 0.0f) normal /= len;
+    }
+
+    for(uint i = 0; i < surface_indices.size(); i += 3) {
+        uint i0 = surface_indices[i];
+        uint i1 = surface_indices[i + 1];
+        uint i2 = surface_indices[i + 2];
+
+        axiom::output_vertex v0 = surface_vertices[i0];
+        axiom::output_vertex v1 = surface_vertices[i1];
+        axiom::output_vertex v2 = surface_vertices[i2];
+        
+        if(v0.element != v1.element || v0.element != v2.element || v1.element != v2.element) {
+            i0 |= 0x80000000;
+            i1 |= 0x80000000;
+            i2 |= 0x80000000;
+        }
+        
+        axiom::color_vertex3d vertex;
+        vertex.color = vec4(color, 1.0);
+
+        vec3 n0 = normals[i0];
+        vec3 n1 = normals[i1];
+        vec3 n2 = normals[i2];
+
+        bool o0 = length(n0) == 0.0f;
+        bool o1 = length(n1) == 0.0f;
+        bool o2 = length(n2) == 0.0f;
+
+        if(o0 || o1 || o2) {
+            vec3 normal = normalize(cross(v0.position - v2.position, v1.position - v2.position));
+
+            if(o0) n0 = normal;
+            if(o1) n1 = normal;
+            if(o2) n2 = normal;
+        }
+
+        vertex.position = v0.position;
+        vertex.normal = n0;
+        mesh.vs.push_back(vertex);
+        
+        vertex.position = v1.position;
+        vertex.normal = n1;
+        mesh.vs.push_back(vertex);
+        
+        vertex.position = v2.position;
+        vertex.normal = n2;
+        mesh.vs.push_back(vertex);
+    };
     
-    axiom::ui_system ui_system(&win);
-    ui_system.font_assets = {&default_font};
+    mesh.load();
+};
 
-    ecs.register_system(ui_system);
-    
-    chat_system csystem;
-    ecs.register_system(csystem);
-
-    axiom::physics_system2d psystem2d;
-    ecs.register_system(psystem2d);
-    
-    axiom::physics_system3d psystem3d;
-    ecs.register_system(psystem3d);
-
-    main_system bsystem(&win);
-    bsystem.textures.emplace("font_axiom_default", std::move(font_tex));
-    ecs.register_system(bsystem);
-    
-    axiom::signature sig = axiom::global_core.ecs->update_signature<axiom::transform3d>();
-    axiom::global_core.ecs->update_signature<axiom::camera3d>(sig);
-    axiom::collector col(sig);
-    axiom::global_core.ecs->create_collector("camera", col);
-    
-    /*
-    sig = axiom::global_core.ecs->update_signature<axiom::transform2d>();
-    axiom::global_core.ecs->update_signature<axiom::color_mesh2d>(sig);
-    col = axiom::collector(sig);
-    axiom::global_core.ecs->create_collector("color_mesh", col);
-    */
-   
-    sig = axiom::global_core.ecs->update_signature<axiom::transform3d>();
-    axiom::global_core.ecs->update_signature<axiom::color_mesh3d>(sig);
-    col = axiom::collector(sig);
-    axiom::global_core.ecs->create_collector("color_mesh3d", col);
-
-    //
-
-    auto create_mesh = [](axiom::color_mesh3d& mesh, std::vector<axiom::vertex_element3d>& elements, vec3 color) {
+void create_mesh(axiom::color_mesh3d& mesh, std::vector<std::vector<axiom::vertex_element3d>>& elements, vec3 color) {
+    for(int j = 0; j < elements.size(); ++j) {
         std::vector<axiom::output_vertex> surface_vertices;
         std::vector<uint> surface_indices;
-        axiom::create_mesh(elements, &surface_vertices, &surface_indices);
+        axiom::create_mesh(elements[j], &surface_vertices, &surface_indices);
 
         std::unordered_map<uint, vec3> normals;
 
@@ -2727,21 +2893,21 @@ int main(int argc, char* argv[]) {
             if(!normals.contains(i1)) normals[i1] = vec3(0.0f);
             if(!normals.contains(i2)) normals[i2] = vec3(0.0f);
 
-            if(!(elements[v0.element].radii.x + elements[v0.element].radii.y == 0.0f || 
-            elements[v0.element].radii.y + elements[v0.element].radii.z == 0.0f || 
-            elements[v0.element].radii.z + elements[v0.element].radii.x == 0.0f)) {
+            if(!(elements[j][v0.element].radii.x + elements[j][v0.element].radii.y == 0.0f || 
+            elements[j][v0.element].radii.y + elements[j][v0.element].radii.z == 0.0f || 
+            elements[j][v0.element].radii.z + elements[j][v0.element].radii.x == 0.0f)) {
                 normals[i0] += scaled_normal;
             }
 
-            if(!(elements[v1.element].radii.x + elements[v1.element].radii.y == 0.0f || 
-            elements[v1.element].radii.y + elements[v1.element].radii.z == 0.0f || 
-            elements[v1.element].radii.z + elements[v1.element].radii.x == 0.0f)) {
+            if(!(elements[j][v1.element].radii.x + elements[j][v1.element].radii.y == 0.0f || 
+            elements[j][v1.element].radii.y + elements[j][v1.element].radii.z == 0.0f || 
+            elements[j][v1.element].radii.z + elements[j][v1.element].radii.x == 0.0f)) {
                 normals[i1] += scaled_normal;
             }
 
-            if(!(elements[v2.element].radii.x + elements[v2.element].radii.y == 0.0f || 
-            elements[v2.element].radii.y + elements[v2.element].radii.z == 0.0f || 
-            elements[v2.element].radii.z + elements[v2.element].radii.x == 0.0f)) {
+            if(!(elements[j][v2.element].radii.x + elements[j][v2.element].radii.y == 0.0f || 
+            elements[j][v2.element].radii.y + elements[j][v2.element].radii.z == 0.0f || 
+            elements[j][v2.element].radii.z + elements[j][v2.element].radii.x == 0.0f)) {
                 normals[i2] += scaled_normal;
             }
 
@@ -2799,112 +2965,196 @@ int main(int argc, char* argv[]) {
             vertex.normal = n2;
             mesh.vs.push_back(vertex);
         };
+    }
+    
+    mesh.load();
+};
+
+std::vector<axiom::shape_face> get_faces(std::vector<axiom::vertex_element3d>& elements) {
+    std::vector<axiom::output_vertex> surface_vertices;
+    std::vector<uint> surface_indices;
+    axiom::create_mesh(elements, &surface_vertices, &surface_indices);
+
+    vec3 center = vec3(0.0f);
+    for(auto& element : elements) center += element.center;
+    center /= elements.size();
+
+    std::vector<axiom::shape_face> faces;
+
+    for(int i = 0; i < surface_indices.size(); i += 3) {
+        uint a = surface_indices[i];
+        uint b = surface_indices[i + 1];
+        uint c = surface_indices[i + 2];
+        a = surface_vertices[a].element;
+        b = surface_vertices[b].element;
+        c = surface_vertices[c].element;
+
+        vec3 va = elements[a].center;
+        vec3 vb = elements[b].center;
+        vec3 vc = elements[c].center;
+
+        vec3 normal = glm::normalize(cross(va - vc, vb - vc));
+        if(dot(normal, va - center) < 0.0f) normal = -normal;
         
-        mesh.load();
-    };
+        std::vector<uint> is = {a, b, c};
+        std::sort(is.begin(), is.end());
 
-    auto get_faces = [](std::vector<axiom::vertex_element3d>& elements) -> std::vector<axiom::shape_face> {
-        std::vector<axiom::output_vertex> surface_vertices;
-        std::vector<uint> surface_indices;
-        axiom::create_mesh(elements, &surface_vertices, &surface_indices);
+        faces.push_back({is, normal});
+    }
 
-        std::vector<axiom::shape_face> faces;
+    for(int i = 0; i < faces.size(); ++i) {
+        for(int j = i + 1; j < faces.size(); ++j) {
+            axiom::shape_face face_i = faces[i];
+            axiom::shape_face face_j = faces[j];
 
-        for(int i = 0; i < surface_indices.size(); i += 3) {
-            uint a = surface_indices[i];
-            uint b = surface_indices[i + 1];
-            uint c = surface_indices[i + 2];
-            a = surface_vertices[a].element;
-            b = surface_vertices[b].element;
-            c = surface_vertices[c].element;
+            if(dot(face_i.normal, face_j.normal) > 0.98f) {
+                std::vector<uint> new_i;
+                std::set_union(face_i.vertices.begin(), face_i.vertices.end(), face_j.vertices.begin(), face_j.vertices.end(), std::back_inserter(new_i));
 
-            vec3 va = elements[a].center;
-            vec3 vb = elements[b].center;
-            vec3 vc = elements[c].center;
+                face_i.normal = normalize(face_i.normal + face_j.normal);
+                face_i.vertices = new_i;
+                faces[i] = face_i;
 
-            vec3 normal = glm::normalize(cross(va - vc, vb - vc));
-            if(dot(normal, va) < 0.0f) normal = -normal;
-            
-            std::vector<uint> is = {a, b, c};
-            std::sort(is.begin(), is.end());
-
-            faces.push_back({is, normal});
-        }
-
-        for(int i = 0; i < faces.size(); ++i) {
-            for(int j = i + 1; j < faces.size(); ++j) {
-                axiom::shape_face face_i = faces[i];
-                axiom::shape_face face_j = faces[j];
-
-                if(dot(face_i.normal, face_j.normal) > 0.98f) {
-                    std::vector<uint> new_i;
-                    std::set_union(face_i.vertices.begin(), face_i.vertices.end(), face_j.vertices.begin(), face_j.vertices.end(), std::back_inserter(new_i));
-
-                    face_i.normal = normalize(face_i.normal + face_j.normal);
-                    face_i.vertices = new_i;
-                    faces[i] = face_i;
-
-                    faces.erase(faces.begin() + j);
-                    --j;
-                }
+                faces.erase(faces.begin() + j);
+                --j;
             }
         }
+    }
 
-        for(auto& face : faces) {
-            vec3 center = vec3(0.0f);
-            for(uint i : face.vertices) center += elements[i].center;
-            center /= float(face.vertices.size());
+    for(auto& face : faces) {
+        vec3 center = vec3(0.0f);
+        for(uint i : face.vertices) center += elements[i].center;
+        center /= float(face.vertices.size());
 
-            vec3 x = glm::normalize(elements[face.vertices[0]].center - center);
-            vec3 y = glm::normalize(glm::cross(face.normal, x));
+        vec3 x = glm::normalize(elements[face.vertices[0]].center - center);
+        vec3 y = glm::normalize(glm::cross(face.normal, x));
 
-            std::sort(face.vertices.begin(), face.vertices.end(), 
-                [center, norm = face.normal, x, y, &elements](const uint& a, const uint& b) {
-                    vec3 va = elements[a].center - center;
-                    vec3 vb = elements[b].center - center;
+        std::sort(face.vertices.begin(), face.vertices.end(), 
+            [center, norm = face.normal, x, y, &elements](const uint& a, const uint& b) {
+                vec3 va = elements[a].center - center;
+                vec3 vb = elements[b].center - center;
 
-                    float sa = dot(va, x);
-                    float sb = dot(vb, x);
-                    bool ba = sa >= 0.0f;
-                    bool bb = sb >= 0.0f;
-                    if(ba != bb) return sa < sb;
-                    
-                    return dot(norm, cross(va, vb)) < 0.0f;
-                }
-            );
-        }
+                float sa = dot(va, x);
+                float sb = dot(vb, x);
+                bool ba = sa >= 0.0f;
+                bool bb = sb >= 0.0f;
+                if(ba != bb) return sa < sb;
+                
+                return dot(norm, cross(va, vb)) < 0.0f;
+            }
+        );
+    }
 
-        return faces;
-    };
+    return faces;
+};
 
-    auto create_collider = [&get_faces](axiom::collider3d& collider, axiom::transform3d& transform, std::vector<axiom::vertex_element3d>& elements, bool is_static = false) {
+void create_collider(axiom::collider3d& collider, axiom::transform3d& transform, std::vector<axiom::vertex_element3d>& elements, bool is_static = false) {
+    axiom::collision_shape3d shape;
+    shape.elements = elements;
+    collider.collision_shapes = {shape};
+
+    collider.is_static = is_static;
+    collider.allow_rotation = true;
+
+    vec3 offset = axiom::initialize_collider(collider, {1.0f});
+    transform.position += transform.orientation * offset;
+    
+    axiom::create_bounding_box(collider);
+
+
+    // get faces
+    std::vector<axiom::shape_face> faces;
+
+    if(collider.collision_shapes[0].elements.size() >= 3) collider.collision_shapes[0].faces = get_faces(collider.collision_shapes[0].elements);
+};
+
+void create_collider(axiom::collider3d& collider, axiom::transform3d& transform, std::vector<std::vector<axiom::vertex_element3d>>& elements, bool is_static = false) {
+    for(int i = 0; i < elements.size(); ++i) {
         axiom::collision_shape3d shape;
-        shape.elements = elements;
-        collider.collision_shapes = {shape};
+        shape.elements = elements[i];
+        collider.collision_shapes.push_back(shape);
+    }
+    
+    collider.is_static = is_static;
+    collider.allow_rotation = true;
 
-        collider.is_static = is_static;
-        collider.allow_rotation = true;
-
-        vec3 offset = axiom::initialize_collider(collider, {1.0f});
-        transform.position += transform.orientation * offset;
-        
-        axiom::create_bounding_box(collider);
-
-
-        // get faces
-        std::vector<axiom::shape_face> faces;
-
-        if(collider.collision_shapes[0].elements.size() >= 3) collider.collision_shapes[0].faces = get_faces(collider.collision_shapes[0].elements);
+    std::vector<float> masses = {
+        1.0f, 1.0f, 1.0f
     };
+
+    vec3 offset = axiom::initialize_collider(collider, masses);
+    transform.position += transform.orientation * offset;
+    axiom::create_bounding_box(collider);
+
+    for(auto& ee : elements) for(auto& element : ee) element.center -= offset;
+
+    for(int i = 0; i < elements.size(); ++i) if(collider.collision_shapes[i].elements.size() >= 3) collider.collision_shapes[i].faces = get_faces(collider.collision_shapes[i].elements);
+};
+
+int main(int argc, char* argv[]) {
+    axiom::window win = axiom::window(ivec2(64, 64), ivec2(512, 512), 6, "axiom test", false);
+
+    //
+
+    axiom::font_asset default_font = axiom::font_asset::load(resource_root + "fonts/axiom_default.bdf");
+    axiom::texture font_tex = std::move(axiom::texture(default_font.texture, axiom::texture_format::RGBA8));
+
+    generate_placeholder();
+
+    //
+
+    win.hide_cursor();
+
+    axiom::ecs ecs;
+    ecs.make_active();
+    
+    axiom::ui_system ui_system(&win);
+    ui_system.font_assets = {&default_font};
+
+    ecs.register_system(ui_system);
+    
+    chat_system csystem;
+    ecs.register_system(csystem);
+
+    axiom::physics_system2d psystem2d;
+    ecs.register_system(psystem2d);
+    
+    axiom::physics_system3d psystem3d;
+    ecs.register_system(psystem3d);
+
+    main_system bsystem(&win);
+    bsystem.textures.emplace("font_axiom_default", std::move(font_tex));
+    ecs.register_system(bsystem);
+    
+    axiom::signature sig = axiom::global_core.ecs->update_signature<axiom::transform3d>();
+    axiom::global_core.ecs->update_signature<axiom::camera3d>(sig);
+    axiom::collector col(sig);
+    axiom::global_core.ecs->create_collector("camera", col);
+    
+    /*
+    sig = axiom::global_core.ecs->update_signature<axiom::transform2d>();
+    axiom::global_core.ecs->update_signature<axiom::color_mesh2d>(sig);
+    col = axiom::collector(sig);
+    axiom::global_core.ecs->create_collector("color_mesh", col);
+    */
+   
+    sig = axiom::global_core.ecs->update_signature<axiom::transform3d>();
+    axiom::global_core.ecs->update_signature<axiom::color_mesh3d>(sig);
+    col = axiom::collector(sig);
+    axiom::global_core.ecs->create_collector("color_mesh3d", col);
+
+    //
 
     axiom::random32 rand(axiom::get_timestamp());
+
+    float w = 1.0f;
 
     {   
         mat3 main_ori = random_orientation(rand);
 
         ivec3 array = ivec3(8);
-        vec3 origin = vec3(0.0f, 0.0f, 9.0f);
-        float sep = 0.75f;
+        vec3 origin = vec3(0.0f, 0.0f, 12.0f);
+        float sep = 1.5f;
 
         for(int x = 0; x < array.x; ++x) {
             for(int y = 0; y < array.y; ++y) {
@@ -2930,12 +3180,10 @@ int main(int argc, char* argv[]) {
                     };
 
                     transform.orientation = random_orientation(rand);
-                    
-                    float w = 0.5f;
 
                     uint n = rand.next();
 
-                    if(n % 6 < 4) {
+                    if(n % 16 < 10) {
                         std::vector<float> dimensions = {rand(), rand(), rand(), rand(), rand()};
                         dimensions = {1, 1, 1, 1, 1};
 
@@ -2956,7 +3204,7 @@ int main(int argc, char* argv[]) {
 
                         create_mesh(mesh, elements, color);
                         create_collider(collider, transform, elements);
-                    } else if(n % 6 < 5) {
+                    } else if(n % 16 < 12) {
                         std::vector<axiom::vertex_element3d> elements = {
                             axiom::vertex_element3d{vec3(1.0f, -1.0f, -1.0f) * w * 0.5f},
                             axiom::vertex_element3d{vec3(-1.0f, 1.0f, -1.0f) * w * 0.5f},
@@ -2968,8 +3216,8 @@ int main(int argc, char* argv[]) {
 
                         create_mesh(mesh, elements, color);
                         create_collider(collider, transform, elements);
-                    } else if(n % 6 < 6) {
-                        uint n = floor(rand() * 5) + 4;
+                    } else if(n % 16 < 14) {
+                        uint n = rand.next() % 5 + 3;
 
                         float crad = axiom::sqrt3;
 
@@ -2985,7 +3233,70 @@ int main(int argc, char* argv[]) {
                             elements.push_back(element);
                         }
 
-                        vec3 color = axiom::hsv_color(rand() * -0.125f + 4.0f + (n - 5) * 0.125f, 0.75f, 1.0f);
+                        vec3 color = axiom::hsv_color(rand() * -0.125f + 4.0f + (n - 3) * 0.125f, 0.75f, 1.0f);
+
+                        create_mesh(mesh, elements, color);
+                        create_collider(collider, transform, elements);
+                    } else if(n % 16 < 15) {
+                        float phi = (1.0f + sqrt(5.0f)) / 2.0f;
+
+                        std::vector<vec3> vs = {
+                            vec3(-1, -1, -1),
+                            vec3(1, -1, -1),
+                            vec3(-1, 1, -1),
+                            vec3(1, 1, -1),
+                            vec3(-1, -1, 1),
+                            vec3(1, -1, 1),
+                            vec3(-1, 1, 1),
+                            vec3(1, 1, 1),
+                            
+                            vec3(0, -phi, -1.0f / phi),
+                            vec3(0, phi, -1.0f / phi),
+                            vec3(0, -phi, 1.0f / phi),
+                            vec3(0, phi, 1.0f / phi),
+                            
+                            vec3(-1.0f / phi, 0, -phi),
+                            vec3(1.0f / phi, 0, -phi),
+                            vec3(-1.0f / phi, 0, phi),
+                            vec3(1.0f / phi, 0, phi),
+
+                            vec3(-phi, -1.0f / phi, 0),
+                            vec3(phi, -1.0f / phi, 0),
+                            vec3(-phi, 1.0f / phi, 0),
+                            vec3(phi, 1.0f / phi, 0),
+                        };
+
+                        std::vector<axiom::vertex_element3d> elements;
+                        for(vec3 v : vs) elements.push_back(axiom::vertex_element3d{v * w * 0.5f});
+
+                        vec3 color = axiom::hsv_color(rand() * -0.125f + 0.5625f, 0.75f, 1.0f);
+
+                        create_mesh(mesh, elements, color);
+                        create_collider(collider, transform, elements);
+                    } else if(n % 16 < 16) {
+                        float phi = (1.0f + sqrt(5.0f)) / 2.0f;
+
+                        std::vector<vec3> vs = {
+                            vec3(0.0f, -1.0f, -phi),
+                            vec3(0.0f, 1.0f, -phi),
+                            vec3(0.0f, -1.0f, phi),
+                            vec3(0.0f, 1.0f, phi),
+
+                            vec3(-1.0f, -phi, 0.0f),
+                            vec3(1.0f, -phi, 0.0f),
+                            vec3(-1.0f, phi, 0.0f),
+                            vec3(1.0f, phi, 0.0f),
+
+                            vec3(-phi, 0.0f, -1.0f),
+                            vec3(phi, 0.0f, -1.0f),
+                            vec3(-phi, 0.0f, 1.0f),
+                            vec3(phi, 0.0f, 1.0f),
+                        };
+
+                        std::vector<axiom::vertex_element3d> elements;
+                        for(vec3 v : vs) elements.push_back(axiom::vertex_element3d{v * w * 0.5f});
+
+                        vec3 color = axiom::hsv_color(rand() * -0.125f + 3.5625f, 0.75f, 1.0f);
 
                         create_mesh(mesh, elements, color);
                         create_collider(collider, transform, elements);
@@ -3012,6 +3323,73 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    w = 2.0;
+
+    {
+        vec3 pos = vec3(0.0f, 0.0f, 30.0f);
+
+        axiom::transform3d transform;
+        axiom::color_mesh3d mesh;
+        axiom::collider3d collider;
+
+        transform.position = pos;
+        std::vector<vec3> vs = {
+            vec3(1.0f, 0.0f, 0.0f),
+            vec3(-1.0f, 0.0f, 0.0f),
+            vec3(0.0f, 1.0f, 0.0f),
+            vec3(0.0f, -1.0f, 0.0f),
+            vec3(0.0f, 0.0f, 1.0f),
+            vec3(0.0f, 0.0f, -1.0f),
+        };
+
+        transform.orientation = random_orientation(rand);
+        
+        std::vector<std::vector<vec3>> ws = {
+            {
+                vec3(0.0f, 7.0f / 8.0f, 0.0f),
+                vec3(1.0f, 7.0f / 8.0f, 0.0f),
+                vec3(3.0f / 32.0f, 11.0f / 16.0f, 0.0f),
+                vec3(29.0f / 32.0f, 11.0f / 16.0f, 0.0f),
+            },
+            
+            {
+                vec3(1.0f / 8.0f, 5.0f / 8.0f, 0.0f),
+                vec3(3.0f / 8.0f, 1.0f / 8.0f, 0.0f),
+                vec3(1.0f / 2.0f, 1.0f / 8.0f, 0.0f),
+                vec3(1.0f / 2.0f, 5.0f / 16.0f, 0.0f),
+                vec3(11.0f / 32.0f, 5.0f / 8.0f, 0.0f),
+            },
+            
+            {
+                vec3(7.0f / 8.0f, 5.0f / 8.0f, 0.0f),
+                vec3(5.0f / 8.0f, 1.0f / 8.0f, 0.0f),
+                vec3(1.0f / 2.0f, 1.0f / 8.0f, 0.0f),
+                vec3(1.0f / 2.0f, 5.0f / 16.0f, 0.0f),
+                vec3(21.0f / 32.0f, 5.0f / 8.0f, 0.0f),
+            },
+        };
+
+        std::vector<std::vector<axiom::vertex_element3d>> elements;
+        for(auto& wws : ws) {
+            elements.push_back({});
+            for(vec3 v : wws) {
+                elements.back().push_back(axiom::vertex_element3d(vec3(v.x * 4.0f - 2.0f, v.y * 4.0f - 2.0f, 0.5f) * w));
+                elements.back().push_back(axiom::vertex_element3d(vec3(v.x * 4.0f - 2.0f, v.y * 4.0f - 2.0f, -0.5f) * w));
+            }
+        }
+        
+        vec3 color = axiom::hsv_color(rand() * -0.125f + 5.5f, 0.75f, 1.0f);
+
+        create_collider(collider, transform, elements);
+
+        create_mesh(mesh, elements, color);
+
+        uint entity = axiom::global_core.ecs->insert_entity();
+        axiom::global_core.ecs->insert_component(entity, transform);
+        axiom::global_core.ecs->insert_component(entity, mesh);
+        axiom::global_core.ecs->insert_component(entity, collider);
+    }
+
     {
         axiom::transform3d transform;
         axiom::color_mesh3d mesh;
@@ -3020,7 +3398,7 @@ int main(int argc, char* argv[]) {
         transform.position = vec3(0.0f, 0.0f, 0.0f);
         transform.orientation = glm::identity<mat3>();//axiom::rotate_to(vec3(0.0f, 0.0f, 1.0f), rand.unit_vector());
 
-        vec3 w = vec3(64.0f, 64.0f, 2.0f);
+        vec3 w = vec3(24.0f, 24.0f, 1.0f);
 
         std::vector<axiom::vertex_element3d> elements = {
             axiom::vertex_element3d{vec3(-1.0f, -1.0f, -1.0f) * w},
@@ -3033,8 +3411,8 @@ int main(int argc, char* argv[]) {
             axiom::vertex_element3d{vec3(1.0f, 1.0f, 1.0f) * w},
         };
         
-        create_mesh(mesh, elements, axiom::hsv_color(0.0f, 0.0f, 0.4f));
         create_collider(collider, transform, elements, true);
+        create_mesh(mesh, elements, axiom::hsv_color(0.0f, 0.0f, 0.4f));
 
         uint entity = axiom::global_core.ecs->insert_entity();
         axiom::global_core.ecs->insert_component(entity, transform);
