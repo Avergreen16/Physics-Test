@@ -23,11 +23,11 @@ add_executable(Game
 
 #axiom_set_icon(Game)
 
-target_include_directories(Game PUBLIC ${CMAKE_SOURCE_DIR}/external/axiom/include ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(Game PUBLIC ${CMAKE_SOURCE_DIR}/external/Axiom/include ${CMAKE_SOURCE_DIR}/src)
 
 set_target_properties(Game PROPERTIES OUTPUT_NAME "Physics-Test")
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/axiom)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/Axiom)
 
 target_link_libraries(Game 
     PRIVATE
