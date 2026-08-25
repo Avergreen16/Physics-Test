@@ -1207,7 +1207,8 @@ void create_tetrahedron(vec3 position, mat3 orientation, float diameter, vec3 co
     axiom::transform3d transform;
     axiom::color_mesh3d mesh;
     axiom::collider3d collider;
-    
+    uint entity = axiom::insert_entity();
+
     std::vector<axiom::vertex_element3d> elements = {
         axiom::vertex_element3d{vec3(1.0f, -1.0f, -1.0f) / axiom::sqrt3 * 0.5f * diameter},
         axiom::vertex_element3d{vec3(-1.0f, 1.0f, -1.0f) / axiom::sqrt3 * 0.5f * diameter},
@@ -1221,7 +1222,6 @@ void create_tetrahedron(vec3 position, mat3 orientation, float diameter, vec3 co
     create_mesh(mesh, elements, color);
     create_collider(collider, transform, elements, mass);
 
-    uint entity = axiom::insert_entity();
     axiom::insert_component(entity, transform);
     axiom::insert_component(entity, mesh);
     axiom::insert_component(entity, collider);
@@ -1764,7 +1764,7 @@ void create_ui() {
             std::vector<axiom::collision_event> found_events;
             if(selected_frame < physics_system.debugger.frame_list.size()) {
                 for(auto& ev : physics_system.debugger.frames[physics_system.debugger.frame_list[selected_frame]].collision_events) {
-                    if(ev.iter) found_events.push_back(ev);
+                    if(axiom::filter(ev)) found_events.push_back(ev);
                 }
                 if(found_events.size() == 0) found_events = physics_system.debugger.frames[physics_system.debugger.frame_list[selected_frame]].collision_events;
                 
@@ -2347,8 +2347,13 @@ void create_ui() {
                                 vv[3], vv[7],
                             };
 
-                            axiom::bounding_box3d bba = axiom::transform_bounding_box(ca.bounding_box, ta.position, ta.orientation);
-                            axiom::bounding_box3d bbb = axiom::transform_bounding_box(cb.bounding_box, tb.position, tb.orientation);
+                            axiom::bounding_box3d bba;
+                            if(ca.shapes.size() > 1) bba = axiom::transform_bounding_box(ca.shapes[event->shape_a].bounding_box, ta.position, ta.orientation);
+                            else bba = axiom::transform_bounding_box(ca.bounding_box, ta.position, ta.orientation);
+
+                            axiom::bounding_box3d bbb;
+                            if(cb.shapes.size() > 1) bbb = axiom::transform_bounding_box(cb.shapes[event->shape_b].bounding_box, tb.position, tb.orientation);
+                            else bbb = axiom::transform_bounding_box(cb.bounding_box, tb.position, tb.orientation);
 
                             std::vector<axiom::color_vertex3d> cvs;
 
@@ -2383,7 +2388,9 @@ void create_ui() {
                             std::vector<vec4> color;
                             std::vector<vec2> size;
 
-                            for(auto& cca : ca.shapes) {
+                            {
+                                auto& cca = ca.shapes[event->shape_a];
+
                                 std::vector<axiom::vertex_element3d> vertices = cca.elements;
 
                                 axiom::transform3d tta = ta;
@@ -2394,11 +2401,12 @@ void create_ui() {
                                 for(axiom::vertex_element3d v : vertices) {
                                     position.push_back(v.center - point);
                                     tex_range.push_back(vec4(54, 96, 6, 6));
-                                    color.push_back(vec4(1.0f));
+                                    color.push_back(vec4(1.0f, 0.35f, 0.35f, 1.0f));
                                     size.push_back(vec2(6, 6));
                                 }
                             }
-                            for(auto& ccb : cb.shapes) {
+                            {
+                                auto& ccb = cb.shapes[event->shape_b];
                                 std::vector<axiom::vertex_element3d> vertices = ccb.elements;
 
                                 axiom::transform3d ttb = tb;
@@ -2409,7 +2417,7 @@ void create_ui() {
                                 for(axiom::vertex_element3d v : vertices) {
                                     position.push_back(v.center - point);
                                     tex_range.push_back(vec4(54, 96, 6, 6));
-                                    color.push_back(vec4(1.0f));
+                                    color.push_back(vec4(0.35f, 1.0f, 1.0f, 1.0f));
                                     size.push_back(vec2(6, 6));
                                 }
                             }
@@ -2493,7 +2501,7 @@ void create_ui() {
                         timer = glm::mod(timer, freq);
                     }
 
-                    timer -= axiom::delta_time();
+                    timer += axiom::delta_time();
                 } else {
                     timer = -delay + freq;
                 }
@@ -2515,7 +2523,7 @@ void create_ui() {
                         timer = glm::mod(timer, freq);
                     }
 
-                    timer -= axiom::delta_time();
+                    timer += axiom::delta_time();
                 } else {
                     timer = -delay + freq;
                 }
@@ -2541,7 +2549,7 @@ void create_ui() {
                         timer = glm::mod(timer, freq);
                     }
 
-                    timer -= axiom::delta_time();
+                    timer += axiom::delta_time();
                 } else {
                     timer = -delay + freq;
                 }
@@ -2563,7 +2571,7 @@ void create_ui() {
                         timer = glm::mod(timer, freq);
                     }
 
-                    timer -= axiom::delta_time();
+                    timer += axiom::delta_time();
                 } else {
                     timer = -delay + freq;
                 }
@@ -2589,7 +2597,7 @@ void create_ui() {
                         timer = glm::mod(timer, freq);
                     }
 
-                    timer -= axiom::delta_time();
+                    timer += axiom::delta_time();
                 } else {
                     timer = -delay + freq;
                 }
@@ -2611,7 +2619,7 @@ void create_ui() {
                         timer = glm::mod(timer, freq);
                     }
 
-                    timer -= axiom::delta_time();
+                    timer += axiom::delta_time();
                 } else {
                     timer = -delay + freq;
                 }
@@ -2641,7 +2649,7 @@ void create_ui() {
             if(selected_frame < physics_system.debugger.frame_list.size()) {
                 std::vector<axiom::collision_event> found_events;
                 for(auto& ev : physics_system.debugger.frames[physics_system.debugger.frame_list[selected_frame]].collision_events) {
-                    if(ev.iter) found_events.push_back(ev);
+                    if(axiom::filter(ev)) found_events.push_back(ev);
                 }
                 if(found_events.size() == 0) found_events = physics_system.debugger.frames[physics_system.debugger.frame_list[selected_frame]].collision_events;
         
@@ -2888,7 +2896,7 @@ void create_ui() {
         axiom::transform3d& camera_transform = axiom::get_component<axiom::transform3d>(camera);
 
         if(ui_system->click_capture == self->self) {
-            if(ui_system->window->input_map[axiom::input_code::KEY_LEFT_SHIFT]) {
+            if(ui_system->window->input_map[axiom::input_code::KEY_LEFT_CTRL]) {
                 if(raycast_capture == false) {
                     raycast_capture = true;
                     
@@ -2925,6 +2933,9 @@ void create_ui() {
                     std::unordered_set<uint> mask;
 
                     psystem.raycast(camera_transform.position, dir, 1.0f, 20.0f, 0.0f, mask, &hit, &shape_hit, &normal, &point);
+
+                    std::cout << std::hex << hit << std::dec << std::endl;
+                    axiom::param_collider = hit;
 
                     if(hit != axiom::NULL_ENTITY) {
                         axiom::position_constraint pc;
@@ -3385,7 +3396,6 @@ int main(int argc, char* argv[]) {
     axiom::global_core.ecs->update_signature<axiom::color_mesh3d>(sig);
     col = axiom::collector(sig);
     axiom::global_core.ecs->create_collector("color_mesh3d", col);
-    
     sig = axiom::global_core.ecs->update_signature<axiom::transform3d>();
     axiom::global_core.ecs->update_signature<axiom::texture_mesh3d>(sig);
     col = axiom::collector(sig);
@@ -3397,7 +3407,9 @@ int main(int argc, char* argv[]) {
     axiom::global_core.ecs->create_collector("texture_range_mesh3d", col);
     //
 
-    axiom::random32 rand(axiom::get_timestamp());
+    axiom::random32 rand(0x8fa85964);//axiom::get_timestamp());
+
+    std::cout << std::hex << rand.seed << std::dec << "\n";
 
     float w = 1.0f;
     vec3 start_pos = vec3(0.0f, 0.0f, 72.0f);
