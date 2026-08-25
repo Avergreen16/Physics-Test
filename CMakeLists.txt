@@ -16,7 +16,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_executable(Game 
     src/main.cpp
-    src/chat.cpp
 )
 
 # icon.rc
@@ -53,9 +52,6 @@ target_link_libraries(Game
         AxiomECS
         AxiomRender
         AxiomUI
-        AxiomScene
-        AxiomPhysics2D
-        AxiomPhysics3D
         
         glm
         nlohmann_json
