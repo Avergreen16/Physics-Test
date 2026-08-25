@@ -1,27 +1,27 @@
-[submodule "axiom"]
+[submodule "external/axiom"]
 	path = external/axiom
 	url = https://github.com/Avergreen16/Axiom
-[submodule "asio"]
+[submodule "external/asio"]
 	path = external/asio
 	url = https://github.com/chriskohlhoff/asio.git
-[submodule "assimp"]
+[submodule "external/assimp"]
 	path = external/assimp
 	url = https://github.com/assimp/assimp.git
-[submodule "glfw"]
+[submodule "external/glfw"]
 	path = external/glfw
 	url = https://github.com/glfw/glfw.git
-[submodule "glm"]
+[submodule "external/glm"]
 	path = external/glm
 	url = https://github.com/g-truc/glm.git
-[submodule "lua"]
+[submodule "external/lua"]
 	path = external/lua
 	url = https://github.com/lua/lua.git
-[submodule "xsimd"]
+[submodule "external/xsimd"]
 	path = external/xsimd
 	url = https://github.com/xtensor-stack/xsimd.git
-[submodule "stb"]
+[submodule "external/stb"]
 	path = external/stb
 	url = https://github.com/nothings/stb.git
-[submodule "json"]
+[submodule "external/json"]
 	path = external/json
 	url = https://github.com/nlohmann/json.git
