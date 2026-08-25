@@ -23,11 +23,28 @@ add_executable(Game
 
 #axiom_set_icon(Game)
 
-target_include_directories(Game PUBLIC ${CMAKE_SOURCE_DIR}/external/Axiom/include ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(Game PUBLIC 
+    ${CMAKE_SOURCE_DIR}/external/axiom/include
+    ${CMAKE_SOURCE_DIR}/external/glm
+    ${CMAKE_SOURCE_DIR}/external/glad
+    ${CMAKE_SOURCE_DIR}/external/stb
+    ${CMAKE_SOURCE_DIR}/external/lua
+
+    ${CMAKE_SOURCE_DIR}/src
+)
 
 set_target_properties(Game PROPERTIES OUTPUT_NAME "Physics-Test")
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/Axiom)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/assimp)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glad)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glfw)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glm)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/xsimd)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/wrappers/asio)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/wrappers/lua)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/wrappers/stb)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/json)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/axiom)
 
 target_link_libraries(Game 
     PRIVATE
