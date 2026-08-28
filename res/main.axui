@@ -1,0 +1,73 @@
+layout top-left
+screen [color = "blue"] {
+    row-split {
+        padding 0
+        panel {
+            tab [label = "Settings" color = "blue"] {
+                padding (0 0 0 2)
+                panel {
+                    padding 6
+                    grid [columns = 3] {
+                        text [label = "light azimuth" wrap = false]
+                        spacer
+                        slider [
+                            size = (192 16)
+                            range = (-180 180)
+                            start = 0
+                            swidth = 8
+                            color = "blue"
+                            callback = "azimuth_callback"
+                        ]
+                        text [label = "light altitude" wrap = false]
+                        spacer
+                        slider [
+                            size = (192 16)
+                            range = (-90 90)
+                            start = 0
+                            swidth = 8
+                            color = "blue"
+                            callback = "altitude_callback"
+                        ]
+                    }
+                }
+            }
+            tab [label = "Chat" color = "blue"] {
+                # fill in later
+            }
+        }
+        panel {
+            padding 0
+            render [draw = "base_render"]
+            column {
+                text [label = "FPS:" callback = "fps_func"]
+                text [label = "position:" callback = "position_func"]
+                text [label = "direction:" callback = "direction_func"]
+                match [color = (0 0 0 0.25)]
+            }
+            layout top-right
+            padding 10
+            column {
+                row {
+                    button [
+                        size = (32 32) 
+                        icon = (12 116 12 12) 
+                        color = "purple"
+                        callback = "physics_play_func"
+                    ]
+                }
+                row {
+                    button [
+                        size = (32 32) 
+                        icon = (48 116 12 12)
+                        callback = "grid_toggle_func"
+                    ]
+                    button [
+                        size = (32 32)
+                        icon = (60 116 12 12)
+                        callback = "create_body_func"
+                    ]
+                }
+            }
+        }
+    }
+}

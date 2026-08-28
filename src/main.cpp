@@ -20,6 +20,7 @@
 #include <consts.hpp>
 
 bool render_grid = true;
+uint render_points_shape = axiom::NULL_ENTITY;
 
 mat3 random_orientation(axiom::random32& rand) {
     glm::quat q = {rand() * 2.0f - 1.0f, rand() * 2.0f - 1.0f, rand() * 2.0f - 1.0f, rand() * 2.0f - 1.0f};
@@ -749,6 +750,94 @@ void base_render(uint camera, axiom::render_target& f) {
     vertices.draw_vertices(GL_TRIANGLES);
     
     glEnable(GL_DEPTH_TEST);
+
+    // render debug points
+
+    std::vector<vec3> normals;
+
+    std::vector<vec3> position;
+    std::vector<vec4> tex_range;
+    std::vector<vec4> color;
+    std::vector<vec2> size;
+
+    auto& psystem3d = axiom::get_system<axiom::physics_system3d>();
+    if(render_points_shape != axiom::NULL_ENTITY) {
+        for(auto& c : psystem3d.collision_table) {
+            if(c.first[0] == render_points_shape || c.first[1] == render_points_shape) {
+                auto& manifold = c.second;
+
+                axiom::transform3d ta;
+                if(c.first[0] != axiom::NULL_ENTITY) ta = axiom::get_component<axiom::transform3d>(c.first[0]);
+                else {
+                    ta.orientation = glm::identity<mat3>();
+                    ta.position = vec3(0.0f);
+                }
+
+                axiom::transform3d tb;
+                if(c.first[1] != axiom::NULL_ENTITY) tb = axiom::get_component<axiom::transform3d>(c.first[1]);
+                else {
+                    tb.orientation = glm::identity<mat3>();
+                    tb.position = vec3(0.0f);
+                }
+
+                for(auto& mf : manifold) {
+                    for(auto& pt : mf.points) {
+                        position.push_back(ta.position + ta.orientation * pt.point.a);
+                        tex_range.push_back(vec4(3, 0, 5, 5));
+                        color.push_back(vec4(1.0f, 0.5f, 0.5f, 1.0f));
+                        size.push_back(vec2(5, 5));
+                        
+                        position.push_back(tb.position + tb.orientation * pt.point.b);
+                        tex_range.push_back(vec4(3, 0, 5, 5));
+                        color.push_back(vec4(0.5f, 1.0f, 1.0f, 1.0f));
+                        size.push_back(vec2(5, 5));
+
+                        normals.push_back(ta.position + ta.orientation * pt.point.a);
+                        normals.push_back(ta.position + ta.orientation * pt.point.a + pt.normal * 0.125f);
+                        
+                        normals.push_back(tb.position + tb.orientation * pt.point.b);
+                        normals.push_back(tb.position + tb.orientation * pt.point.b - pt.normal * 0.125f);
+                    }
+                }
+            }
+        }
+    }
+
+    glDisable(GL_DEPTH_TEST);
+    render_billboards(camera, position, tex_range, color, size, f.size, msystem.textures["ui"]);
+
+    //
+
+    std::vector<axiom::color_vertex3d> cvs;
+
+    for(int i = 0; i < normals.size(); ++i) {
+        axiom::color_vertex3d cv;
+        cv.position = normals[i];
+        cv.color = vec4(axiom::hsv_color(1.0f, 0.75f, 1.0f), 1 - i % 2);
+        cvs.push_back(cv);
+    }
+
+    vertices.vertex_buffer_data(cvs.data(), cvs.size(), sizeof(axiom::color_vertex3d), GL_STREAM_DRAW);
+    vertices.add_vertex_attribute(0, 3, GL_FLOAT, false, sizeof(axiom::color_vertex3d), 0);
+    vertices.add_vertex_attribute(1, 4, GL_FLOAT, false, sizeof(axiom::color_vertex3d), sizeof(float) * 3);
+    vertices.add_vertex_attribute(2, 3, GL_FLOAT, false, sizeof(axiom::color_vertex3d), sizeof(float) * 7);
+    
+    msystem.shaders["color3d"].use();
+    vertices.bind();
+
+    axiom::transform3d tf;
+    tf.position = vec3(0.0f);
+    tf.orientation = glm::identity<mat3>();
+
+    model = axiom::get_model(tf, camera_transform);
+
+    glUniformMatrix4fv(0, 1, false, &model[0][0]);
+    glUniformMatrix4fv(1, 1, false, &view[0][0]);
+    glUniformMatrix4fv(2, 1, false, &proj[0][0]);
+
+    vertices.draw_vertices(GL_LINES);
+    glEnable(GL_DEPTH_TEST);
+
 
     // render grid
 
@@ -2242,7 +2331,7 @@ void create_ui() {
                         mat4 model = axiom::get_model(grid_transform, camera_transform);
 
                         axiom::shader& grid_shader = msystem.shaders["grid3d"];
-                        glDisable(GL_DEPTH_TEST);
+                        glEnable(GL_DEPTH_TEST);
 
                         grid_shader.use();
                         vertices.bind();
@@ -2254,7 +2343,6 @@ void create_ui() {
                         glUniformMatrix4fv(2, 1, false, &proj[0][0]);
 
                         vertices.draw_vertices(GL_TRIANGLES);
-                        glEnable(GL_DEPTH_TEST);
 
                         // render debug info
                         
@@ -2274,46 +2362,68 @@ void create_ui() {
 
                         if(event->finished) {
 
-                            std::vector<axiom::color_vertex3d> cvs;
-                        
-                            for(int i = 0; i < event->manifold_a.size(); ++i) {
-                                vec3 p0 = event->manifold_a[i];
-                                vec3 p1 = event->manifold_a[(i + 1) % event->manifold_a.size()];
+                            if(event->manifold_a.size() == 1) {
+                                std::vector<vec3> normals;
 
-                                axiom::color_vertex3d v0 = {p0, vec4(axiom::hsv_color(0.0f, 0.75f, 1.0f), 1.0)};
-                                axiom::color_vertex3d v1 = {p1, vec4(axiom::hsv_color(0.0f, 0.75f, 1.0f), 1.0)};
+                                std::vector<vec3> position;
+                                std::vector<vec4> tex_range;
+                                std::vector<vec4> color;
+                                std::vector<vec2> size;
+
+                                position.push_back(event->manifold_a[0]);
+                                tex_range.push_back(vec4(3, 0, 5, 5));
+                                color.push_back(vec4(1.0f, 0.5f, 0.5f, 1.0f));
+                                size.push_back(vec2(5, 5));
                                 
-                                cvs.push_back(v0);
-                                cvs.push_back(v1);
-                            }
+                                position.push_back(event->manifold_b[0]);
+                                tex_range.push_back(vec4(3, 0, 5, 5));
+                                color.push_back(vec4(0.5f, 1.0f, 1.0f, 1.0f));
+                                size.push_back(vec2(5, 5));
+
+                                glDisable(GL_DEPTH_TEST);
+                                render_billboards(camera, position, tex_range, color, size, f.size, msystem.textures["ui"]);
+                            } else {
+                                std::vector<axiom::color_vertex3d> cvs;
                             
-                            for(int i = 0; i < event->manifold_b.size(); ++i) {
-                                vec3 p0 = event->manifold_b[i];
-                                vec3 p1 = event->manifold_b[(i + 1) % event->manifold_b.size()];
+                                for(int i = 0; i < event->manifold_a.size(); ++i) {
+                                    vec3 p0 = event->manifold_a[i];
+                                    vec3 p1 = event->manifold_a[(i + 1) % event->manifold_a.size()];
 
-                                axiom::color_vertex3d v0 = {p0, vec4(axiom::hsv_color(3.0f, 0.75f, 1.0f), 1.0)};
-                                axiom::color_vertex3d v1 = {p1, vec4(axiom::hsv_color(3.0f, 0.75f, 1.0f), 1.0)};
+                                    axiom::color_vertex3d v0 = {p0, vec4(axiom::hsv_color(0.0f, 0.35f, 1.0f), 1.0)};
+                                    axiom::color_vertex3d v1 = {p1, vec4(axiom::hsv_color(0.0f, 0.35f, 1.0f), 1.0)};
+                                    
+                                    cvs.push_back(v0);
+                                    cvs.push_back(v1);
+                                }
+                                
+                                for(int i = 0; i < event->manifold_b.size(); ++i) {
+                                    vec3 p0 = event->manifold_b[i];
+                                    vec3 p1 = event->manifold_b[(i + 1) % event->manifold_b.size()];
 
-                                cvs.push_back(v0);
-                                cvs.push_back(v1);
+                                    axiom::color_vertex3d v0 = {p0, vec4(axiom::hsv_color(3.0f, 0.35f, 1.0f), 1.0)};
+                                    axiom::color_vertex3d v1 = {p1, vec4(axiom::hsv_color(3.0f, 0.35f, 1.0f), 1.0)};
+
+                                    cvs.push_back(v0);
+                                    cvs.push_back(v1);
+                                }
+
+                                axiom::transform3d transform = {-point, glm::identity<mat3>()};
+                                mat4 model = axiom::get_model(transform, camera_transform);
+
+                                vertices.vertex_buffer_data(cvs.data(), cvs.size(), sizeof(axiom::color_vertex3d), GL_STREAM_DRAW);
+                                vertices.add_vertex_attribute(0, 3, GL_FLOAT, false, sizeof(axiom::color_vertex3d), 0);
+                                vertices.add_vertex_attribute(1, 4, GL_FLOAT, false, sizeof(axiom::color_vertex3d), sizeof(float) * 3);
+                                vertices.add_vertex_attribute(2, 3, GL_FLOAT, false, sizeof(axiom::color_vertex3d), sizeof(float) * 7);
+                                
+                                msystem.shaders["color3d"].use();
+                                vertices.bind();
+
+                                glUniformMatrix4fv(0, 1, false, &model[0][0]);
+                                glUniformMatrix4fv(1, 1, false, &view[0][0]);
+                                glUniformMatrix4fv(2, 1, false, &proj[0][0]);
+
+                                vertices.draw_vertices(GL_LINES);
                             }
-
-                            axiom::transform3d transform = {-point, glm::identity<mat3>()};
-                            mat4 model = axiom::get_model(transform, camera_transform);
-
-                            vertices.vertex_buffer_data(cvs.data(), cvs.size(), sizeof(axiom::color_vertex3d), GL_STREAM_DRAW);
-                            vertices.add_vertex_attribute(0, 3, GL_FLOAT, false, sizeof(axiom::color_vertex3d), 0);
-                            vertices.add_vertex_attribute(1, 4, GL_FLOAT, false, sizeof(axiom::color_vertex3d), sizeof(float) * 3);
-                            vertices.add_vertex_attribute(2, 3, GL_FLOAT, false, sizeof(axiom::color_vertex3d), sizeof(float) * 7);
-                            
-                            msystem.shaders["color3d"].use();
-                            vertices.bind();
-
-                            glUniformMatrix4fv(0, 1, false, &model[0][0]);
-                            glUniformMatrix4fv(1, 1, false, &view[0][0]);
-                            glUniformMatrix4fv(2, 1, false, &proj[0][0]);
-
-                            vertices.draw_vertices(GL_LINES);
                         }
 
                         point += event->transform_a.position;
@@ -2936,6 +3046,7 @@ void create_ui() {
 
                     std::cout << std::hex << hit << std::dec << std::endl;
                     axiom::param_collider = hit;
+                    render_points_shape = hit;
 
                     if(hit != axiom::NULL_ENTITY) {
                         axiom::position_constraint pc;
@@ -2949,8 +3060,8 @@ void create_ui() {
 
                         constraint_dist = length(point - camera_transform.position);
 
-                        constraint_index = psystem.constraints.size();
-                        psystem.constraints.push_back(std::make_unique<axiom::position_constraint>(pc));
+                        //constraint_index = psystem.constraints.size();
+                        //psystem.constraints.push_back(std::make_unique<axiom::position_constraint>(pc));
                     }
                 }
             } else {
@@ -3407,19 +3518,19 @@ int main(int argc, char* argv[]) {
     axiom::global_core.ecs->create_collector("texture_range_mesh3d", col);
     //
 
-    axiom::random32 rand(0x8fa85964);//axiom::get_timestamp());
+    axiom::random32 rand(axiom::get_timestamp());//axiom::get_timestamp() //0x97cb477a
 
     std::cout << std::hex << rand.seed << std::dec << "\n";
 
     float w = 1.0f;
-    vec3 start_pos = vec3(0.0f, 0.0f, 72.0f);
+    vec3 start_pos = vec3(0.0f, 0.0f, 80.0f);
 
     {   
         mat3 main_ori = random_orientation(rand);
 
         ivec3 array = ivec3(8, 8, 8);
         vec3 origin = start_pos;
-        float sep = 1.5f;
+        float sep = 1.25f;
 
         for(int x = 0; x < array.x; ++x) {
             for(int y = 0; y < array.y; ++y) {
@@ -3434,24 +3545,24 @@ int main(int argc, char* argv[]) {
                     if(n % 16 < 10) {
                         vec3 color = axiom::hsv_color(rand() * 0.125f + 5.875f, 0.8f, 1.0f);
 
-                        create_cube(pos, random_orientation(rand), axiom::sqrt3, color);
+                        create_cube(pos, main_ori, axiom::sqrt3, color);
                     } else if(n % 16 < 12) {
                         vec3 color = axiom::hsv_color(rand() * 0.125f + 0.875f, 0.8f, 1.0f);
 
-                        create_tetrahedron(pos, random_orientation(rand), axiom::sqrt3, color);
+                        create_tetrahedron(pos, main_ori, axiom::sqrt3, color);
                     } else if(n % 16 < 14) {
                         vec3 color = axiom::hsv_color(rand() * 0.125f + 3.875f, 0.8f, 1.0f);
                         uint n = rand.next() % 5 + 3;
 
-                        create_bipyramid(pos, random_orientation(rand), axiom::sqrt3, n, color);
+                        create_bipyramid(pos, main_ori, axiom::sqrt3, n, color);
                     } else if(n % 16 < 15) {
                         vec3 color = axiom::hsv_color(rand() * 0.125f + 0.3f, 0.8f, 1.0f);
 
-                        create_dodecahedron(pos, random_orientation(rand), axiom::sqrt3, color);
+                        create_dodecahedron(pos, main_ori, axiom::sqrt3, color);
                     } else if(n % 16 < 16) {
                         vec3 color = axiom::hsv_color(rand() * 0.125f + 3.0f, 0.8f, 1.0f);
 
-                        create_icosahedron(pos, random_orientation(rand), axiom::sqrt3, color);
+                        create_icosahedron(pos, main_ori, axiom::sqrt3, color);
                     }
                 }
             }
@@ -3496,8 +3607,28 @@ mat4 get_matrix(vec3 y, vec3 z, vec3 origin) {
 
 void make_world(world_params params) {
     float terrain_scale = 48.0f;
-    float terrain_freq = 96.0f;
+    float terrain_period = 192.0f;
+    uint seed = 0xFF00;
 
+    axiom::random32 rand(seed);
+    mat3 rot0 = random_orientation(rand);
+    mat3 rot1 = random_orientation(rand);
+    
+    auto get_noise = [&](vec3 position) {
+        float a = axiom::noise_gen::ridged_perlin_noise(rot0 * (position + vec3(22.91f, 28.19f, -66.53f)), terrain_period, 5, seed);
+        float b = axiom::noise_gen::ridged_perlin_noise(rot1 * (position + vec3(10.91f, -23.19f, 16.53f)), terrain_period, 5, seed);
+
+        float x = a * b;
+        x *= x;
+
+        x += axiom::noise_gen::perlin_noise(rot0 * (position + vec3(6.91f, -43.19f, 13.53f)), terrain_period * 0.1f, 5, seed) * 0.025f;
+
+        return x;
+    };
+    
+    /*
+    */
+    
     for(int yc = 0; yc < params.num_chunks; ++yc) {  
         for(int xc = 0; xc < params.num_chunks; ++xc) {
             std::vector<vec3> collision_triangles;
@@ -3517,9 +3648,9 @@ void make_world(world_params params) {
                     vec3 pos_x = pos + vx * 0.1f;
                     vec3 pos_y = pos + vy * 0.1f;
                     
-                    float noise = axiom::noise_gen::perlin_noise(pos, terrain_freq, 5, 0xFF00);
-                    float noise_x = axiom::noise_gen::perlin_noise(pos_x, terrain_freq, 5, 0xFF00);
-                    float noise_y = axiom::noise_gen::perlin_noise(pos_y, terrain_freq, 5, 0xFF00);
+                    float noise = get_noise(pos);
+                    float noise_x = get_noise(pos_x);
+                    float noise_y = get_noise(pos_y);
 
                     pos_x = pos_x + vz * noise_x * terrain_scale;
                     pos_y = pos_y + vz * noise_y * terrain_scale;
