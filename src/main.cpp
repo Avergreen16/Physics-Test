@@ -14,6 +14,7 @@
 #include <nlohmann/json.hpp>
 
 #include <chat.hpp>
+#include <world_gen.hpp>
 
 #include <iostream>
 
@@ -35,6 +36,7 @@ struct world_params {
 
     vec3 radii;
     vec3 position;
+    mat3 orientation;
 
     uint num_chunks;
     uint num_tiles;
@@ -259,6 +261,14 @@ struct main_system : axiom::system {
     }
 };
 
+axiom::shader& get_shader(std::string name) {
+    return axiom::get_system<main_system>().shaders[name];
+}
+
+axiom::texture& get_texture(std::string name) {
+    return axiom::get_system<main_system>().textures[name];
+}
+
 void get_bounding_box(std::vector<vec3> vertices, vec3& min, vec3& max) {
     min = vec3(axiom::max_float);
     max = vec3(-axiom::max_float);
@@ -378,14 +388,14 @@ void render_billboards(uint camera, std::vector<vec3> origins, std::vector<vec4>
 }
 
 void shadow_render(std::vector<shadow_map>& shadow_maps, uint camera) {
-    static const float vmin = 2048.0f / 16.0f;
-    static const float vmax = 524288.0f;
+    static uint texture_width = 2048;
+    static const float pixel_size = 1.0f / 48.0f;
     static const float vgrowth = 8.0f;
     static const int vmaps = shadow_maps.size();
     glEnable(GL_DEPTH_CLAMP);
 
     auto vfunc = [](int t) {
-        return vmin + (vmax - vmin) * (128.0f * pow(vgrowth, t) - 128) / ((128.0f * pow(vgrowth, 4) - 128));
+        return pixel_size * texture_width * pow(8, t);
     };
 
     axiom::transform3d camera_transform = axiom::get_component<axiom::transform3d>(camera);
@@ -410,8 +420,6 @@ void shadow_render(std::vector<shadow_map>& shadow_maps, uint camera) {
 
         v = glm::normalize(vv.xyz());
     }
-    
-    uint texture_width = 2048;
 
     for(auto& map : shadow_maps) map.framebuffer.resize(ivec2(texture_width));
 
@@ -2991,7 +2999,7 @@ void create_ui() {
 
     cam.fov = 90.0f;
 
-    tf.position = vec3(0x8945B, 0x5BAD2, 0x53445);
+    tf.position = normalize(vec3(0x8945B, 0x5BAD2, 0x53445)) * 350000.0f;
     tf.orientation = axiom::rotate_to(vec3(0.0f, 0.0f, -1.0f), vec3(0.0f, 1.0f, 0.0f));
 
     axiom::insert_component(camera_entity, cam);
@@ -3035,7 +3043,7 @@ void create_ui() {
                     auto& psystem = axiom::global_core.ecs->get_system<axiom::physics_system3d>();
 
                     psystem.gravity = [](vec3 pos) {
-                        return normalize(pos - vec3(0.0f, 0.0f, -300000.0f - 0xD88)) * -27.5f;
+                        return normalize(pos - vec3(0.0f, 0.0f, 0.0f)) * -27.5f;
                     };
 
                     uint hit;
@@ -3174,116 +3182,6 @@ void create_ui() {
                 c->vb = new_point;
             }
         }
-            
-        /*
-        static vec2 cursor_pos = vec2(0.0f);
-        static bool capture = false;
-        static uint constraint = 0xFFFFFFFF;
-        
-        axiom::physics_system2d& physics = axiom::global_core.ecs->get_system<axiom::physics_system2d>();
-        
-        uint camera = *axiom::global_core.ecs->collectors["camera"].entities.begin();
-
-        axiom::transform2d& camera_transform = axiom::get_component<axiom::transform2d>(camera);
-        axiom::camera2d& camera_cam = axiom::get_component<axiom::camera2d>(camera);
-        
-        cursor_pos = ui_system->window->cursor_pos;
-        cursor_pos = (cursor_pos - (vec2)self->position - (0.5f * (vec2)self->size)) / (0.5f * (vec2)self->size);
-        
-        mat4 view = axiom::get_view(camera_cam, camera_transform);
-        mat4 proj = axiom::get_proj(camera_cam);
-
-        mat4 inv_view = glm::inverse(view);
-        mat4 inv_proj = glm::inverse(proj);
-
-        cursor_pos = inv_view * inv_proj * vec4(cursor_pos, 0.0f, 1.0f);
-        
-        //std::cout << ui_system->text_cursor << "\n";
-        if(constraint != 0xFFFFFFFF || ui_system->text_cursor) capture = false;
-        if(ui_system->click_capture == self->self) {
-            if(ui_system->window->pressed_buttons.contains(axiom::input_code::MOUSE_LEFT) && !ui_system->text_cursor) {
-                capture = true;
-            }
-
-            //
-
-            if(capture) {
-                vec2 delta = ui_system->window->cursor_delta / (0.5f * (vec2)self->size);
-
-                vec2 world_delta = mat4(mat3(inv_view)) * inv_proj * vec4(delta, 0.0f, 1.0f);
-
-                camera_transform.position -= world_delta;
-            }
-
-            // update constraint
-            if(constraint != 0xFFFFFFFF) {
-                axiom::constraint& cc = physics.constraints[constraint];
-                cc.pos[0].b = cursor_pos;
-            }
-
-            if(ui_system->window->pressed_buttons.contains(axiom::input_code::MOUSE_LEFT) && ui_system->window->input_map[axiom::input_code::KEY_LEFT_SHIFT]) {
-                if(constraint == 0xFFFFFFFF) {
-                    for(uint entity : physics.collectors[0].entities) {
-                        axiom::transform2d& transform = axiom::get_component<axiom::transform2d>(entity);
-                        axiom::collider2d& collider = axiom::get_component<axiom::collider2d>(entity);
-
-                        vec2 rel_point = glm::transpose(transform.orientation) * (cursor_pos - transform.position);
-
-                        bool collide = false;
-
-                        for(axiom::collision_shape2d& cs : collider.shapes) {
-                            vec2 rel_point2 = transpose(cs.orientation) * (rel_point - cs.position);
-
-                            collide |= axiom::physics_system2d::collision_point(cs.vertices, rel_point2);
-
-                            if(collide) break;
-                        }
-
-                        if(collide) {
-                            constraint = physics.constraints.size();
-
-                            //
-
-                            axiom::constraint cc;
-                            cc.a = entity;
-
-                            axiom::pos_constraint pc;
-                            pc.a = rel_point;
-                            pc.b = cursor_pos;
-                            pc.vs = {vec2(1, 0), vec2(0, 1)};
-                            pc.is_hold = true;
-
-                            cc.pos.push_back(pc);
-
-                            physics.constraints.push_back(cc);
-
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        if(!ui_system->window->input_map[axiom::input_code::MOUSE_LEFT]) {
-            if(constraint != 0xFFFFFFFF) {
-                physics.constraints.erase(physics.constraints.begin() + constraint);
-                constraint = 0xFFFFFFFF;
-                capture = false;
-            }
-        }
-
-        if(ui_system->hover_capture == self->self) {
-            float zoom_delta = glm::pow(1.25f, ui_system->window->scroll_delta);
-            if(zoom_delta != 1.0f) {
-                vec2 offset = camera_transform.position - cursor_pos;
-                offset /= zoom_delta;
-
-                camera_transform.position = offset + cursor_pos;
-                
-                camera_cam.zoom *= zoom_delta;
-            }
-        }
-        */
     };
 
     {
@@ -3487,14 +3385,33 @@ int main(int argc, char* argv[]) {
     axiom::global_core.ecs->create_collector("texture_range_mesh3d", col);
     //
 
+    float separation = 128000000.0f;
+    vec3 direction = normalize(vec3(0.3f, 0.8f, 0.0f));
+
     {
         world_params params;
-        params.num_tiles = 32;
-        params.num_chunks = 8;
+        params.num_tiles = 64;
+        params.num_chunks = 4;
         params.seed = axiom::get_timestamp();
+        params.orientation = glm::identity<mat3>();//axiom::rotate_to(vec3(1.0f, 0.0f, 0.0f), -direction);
+        params.position = vec3(0.0f);//direction * 0.429f * separation;
+        params.radii = vec3(180000.0f);
 
         make_world(params);
     }
+    
+    /*
+    {
+        world_params params;
+        params.num_tiles = 64;
+        params.num_chunks = 4;
+        params.seed = axiom::get_timestamp() + 0x50F;
+        params.orientation = axiom::rotate_to(vec3(1.0f, 0.0f, 0.0f), direction);
+        params.position = -direction * (1.0f - 0.429f) * separation;
+        params.radii = vec3(1707000.0f);
+
+        make_world(params);
+    }*/
 
     //
 
@@ -3518,716 +3435,31 @@ int main(int argc, char* argv[]) {
     }
 }
 
-mat4 get_matrix(vec3 y, vec3 z, vec3 origin) {
-    mat3 m = mat3(glm::cross(y, z), y, z);
-
-    return glm::translate(origin) * mat4(m);
-}
-
-struct crater_population {
-    float min_size;
-    float max_size;
-    float distribution;
-    int num_craters;
-    int num_ejecta;
-};
-
-void create_planet(uint seed, vec3 position, mat3 orientation, vec3 dimensions, std::vector<crater_population> populations, std::vector<vec3> colors, float amplitude, float noise_freq, float noise_offset, float age_value, float ejecta_value, float blend_value);
-
 void make_world(world_params params) {
     std::vector<crater_population> populations;
 
     // blue moon
     populations.clear();
-    populations.push_back({0.05f, 0.175f, 4.0f, 20, 2});
+    populations.push_back({0.05f, 0.175f, 4.0f, 20, 0});
     populations.push_back({0.015f, 0.05f, 4.0f, 2500, 75});
-    populations.push_back({0.002f, 0.015f, 4.0f, 50000, 300});
+    populations.push_back({0.001f, 0.015f, 4.0f, 50000, 300});
     std::vector<vec3> colors = {
         axiom::hsv_color(5.85, 0.4, 0.15),
         axiom::hsv_color(5.85, 0.4, 0.125),
         axiom::hsv_color(5.85, 0.4, 0.25),
         axiom::hsv_color(5.85, 0.4, 0.25)
-        /*
-        axiom::hsv_color(0.05, 0.45, 0.25),
-        axiom::hsv_color(0.05, 0.45, 0.2),
-        axiom::hsv_color(0.05, 0.45, 0.4),
-        axiom::hsv_color(0.05, 0.45, 0.4)
-        */
     };
 
     uint seed = params.seed;
     vec3 position = params.position;
-    mat3 orientation = glm::identity<mat3>();
-    vec3 dimensions = vec3(300000.0f);
-    float amplitude = 4000.0f;
+    mat3 orientation = params.orientation;
+    vec3 dimensions = params.radii;
+    float amplitude = 1000.0f;
     float noise_freq = 0.3f;
     float noise_offset = 0.0f;
     float age_value = 1.0f;
     float ejecta_value = 0.25f;
     float blend_value = 0.125f;
 
-    create_planet(seed, position, orientation, dimensions, populations, colors, amplitude, noise_freq, noise_offset, age_value, ejecta_value, blend_value);
-    /*
-    std::vector<mat4> transforms = {
-        get_matrix(vec3(0, 0, 1), vec3(1, 0, 0), vec3(1, 0, 0)),
-        get_matrix(vec3(0, 0, 1), vec3(0, 1, 0), vec3(0, 1, 0)),
-        get_matrix(vec3(-1, 0, 0), vec3(0, 0, 1), vec3(0, 0, 1)),
-        get_matrix(vec3(0, 0, 1), vec3(-1, 0, 0), vec3(-1, 0, 0)),
-        get_matrix(vec3(0, 0, 1), vec3(0, -1, 0), vec3(0, -1, 0)),
-        get_matrix(vec3(1, 0, 0), vec3(0, 0, -1), vec3(0, 0, -1)),
-    };
-
-    std::vector<vec3> tex_directions = {
-        glm::normalize(vec3(-1.0f, -1.0f, -1.0f)),
-        glm::normalize(vec3(0.0f, -1.0f, -1.0f)),
-        glm::normalize(vec3(1.0f, -1.0f, -1.0f)),
-        glm::normalize(vec3(-1.0f, 0.0f, -1.0f)),
-        glm::normalize(vec3(0.0f, 0.0f, -1.0f)),
-        glm::normalize(vec3(1.0f, 0.0f, -1.0f)),
-        glm::normalize(vec3(-1.0f, 1.0f, -1.0f)),
-        glm::normalize(vec3(0.0f, 1.0f, -1.0f)),
-        glm::normalize(vec3(1.0f, 1.0f, -1.0f)),
-        
-        glm::normalize(vec3(-1.0f, -1.0f, 0.0f)),
-        glm::normalize(vec3(0.0f, -1.0f, 0.0f)),
-        glm::normalize(vec3(1.0f, -1.0f, 0.0f)),
-        glm::normalize(vec3(-1.0f, 0.0f, 0.0f)),
-        //glm::normalize(vec3(0.0f, 0.0f, 0.0f)),
-        glm::normalize(vec3(1.0f, 0.0f, 0.0f)),
-        glm::normalize(vec3(-1.0f, 1.0f, 0.0f)),
-        glm::normalize(vec3(0.0f, 1.0f, 0.0f)),
-        glm::normalize(vec3(1.0f, 1.0f, 0.0f)),
-        
-        glm::normalize(vec3(-1.0f, -1.0f, 1.0f)),
-        glm::normalize(vec3(0.0f, -1.0f, 1.0f)),
-        glm::normalize(vec3(1.0f, -1.0f, 1.0f)),
-        glm::normalize(vec3(-1.0f, 0.0f, 1.0f)),
-        glm::normalize(vec3(0.0f, 0.0f, 1.0f)),
-        glm::normalize(vec3(1.0f, 0.0f, 1.0f)),
-        glm::normalize(vec3(-1.0f, 1.0f, 1.0f)),
-        glm::normalize(vec3(0.0f, 1.0f, 1.0f)),
-        glm::normalize(vec3(1.0f, 1.0f, 1.0f)),
-    };
-    vec4 tex_range = vec4(72, 0, 16, 16);
-
-    float terrain_scale = 48.0f;
-
-    for(int i = 0; i < 6; ++i) {
-        mat4 matrix = transforms[i];
-        
-        for(int yc = 0; yc < params.num_chunks; ++yc) {  
-            for(int xc = 0; xc < params.num_chunks; ++xc) {
-                std::vector<vec3> collision_triangles;
-                std::vector<axiom::texture_range_vertex3d> mesh_vertices;
-                
-                std::vector<vec3> vs;
-                std::vector<vec3> ns;
-
-                for(int y = 0; y < params.num_tiles + 1; ++y) {  
-                    for(int x = 0; x < params.num_tiles + 1; ++x) {
-                        vec3 pos = vec3(float(x + xc * params.num_tiles) / (params.num_tiles * params.num_chunks) * 2.0f - 1.0f, float(y + yc * params.num_tiles) / (params.num_tiles * params.num_chunks) * 2.0f - 1.0f, 0);
-                        pos = vec3(matrix * vec4(pos, 1.0f));
-
-                        pos = spherify(pos);
-                        
-                        vec3 sphere_normal = normalize(pos);
-                        float noise = axiom::noise_gen::perlin_noise(pos, 0.25f, 5, 0xFF00);
-
-                        vec3 vx = normalize(cross(sphere_normal, vec3(0.0f, 0.0f, 1.0f)));
-                        if(glm::isnan(vx.x)) vx = normalize(cross(sphere_normal, vec3(1.0f, 0.0f, 0.0f)));
-                        vec3 vy = normalize(cross(sphere_normal, vx));
-
-                        vec3 pos_x = normalize(pos + vx * 0.001f);
-                        vec3 pos_y = normalize(pos + vy * 0.001f);
-                        
-                        float noise_x = axiom::noise_gen::perlin_noise(pos_x, 0.25f, 5, 0xFF00);
-                        float noise_y = axiom::noise_gen::perlin_noise(pos_y, 0.25f, 5, 0xFF00);
-
-                        pos_x = pos_x * params.radii + sphere_normal * noise_x * terrain_scale;
-                        pos_y = pos_y * params.radii + sphere_normal * noise_y * terrain_scale;
-                        pos = pos * params.radii + sphere_normal * noise * terrain_scale;
-
-                        vs.push_back(pos);
-                        ns.push_back(normalize(cross(pos_x - pos, pos_y - pos)));
-                    }
-                }
-
-                for(int y = 0; y < params.num_tiles; ++y) {  
-                    for(int x = 0; x < params.num_tiles; ++x) {
-                        ivec2 a = {x, y};
-                        ivec2 b = {x + 1, y};
-                        ivec2 c = {x, y + 1};
-                        ivec2 d = {x + 1, y + 1};
-
-                        vec3 va = vs[a.y * (params.num_tiles + 1) + a.x];
-                        vec3 vb = vs[b.y * (params.num_tiles + 1) + b.x];
-                        vec3 vc = vs[c.y * (params.num_tiles + 1) + c.x];
-                        vec3 vd = vs[d.y * (params.num_tiles + 1) + d.x];
-                        
-                        vec3 na = ns[a.y * (params.num_tiles + 1) + a.x];
-                        vec3 nb = ns[b.y * (params.num_tiles + 1) + b.x];
-                        vec3 nc = ns[c.y * (params.num_tiles + 1) + c.x];
-                        vec3 nd = ns[d.y * (params.num_tiles + 1) + d.x];
-
-                        axiom::texture_range_vertex3d cva(va, vec2(0.0f, 0.0f), tex_range, vec4(0.75f, 0.75f, 0.75f, 1.0f), na);
-                        axiom::texture_range_vertex3d cvb(vb, vec2(0.0f, 0.0f), tex_range, vec4(0.75f, 0.75f, 0.75f, 1.0f), nb);
-                        axiom::texture_range_vertex3d cvc(vc, vec2(0.0f, 0.0f), tex_range, vec4(0.75f, 0.75f, 0.75f, 1.0f), nc);
-                        axiom::texture_range_vertex3d cvd(vd, vec2(0.0f, 0.0f), tex_range, vec4(0.75f, 0.75f, 0.75f, 1.0f), nd);
-                        
-                        vec3 normal_a = glm::normalize(glm::cross(va - vd, vb - vd));
-                        vec3 normal_b = glm::normalize(glm::cross(va - vc, vd - vc));
-                        vec3 avg_n = glm::normalize(normal_a + normal_b);
-
-                        vec3 n = vec3(0.0f);
-                        for(vec3 v : tex_directions) {
-                            if(dot(avg_n, n) < dot(avg_n, v)) n = v;
-                        }
-                        vec3 vx = normalize(cross(n, vec3(0.0f, 0.0f, 1.0f)));
-                        if(glm::isnan(vx.x)) vx = normalize(cross(n, vec3(1.0f, 0.0f, 0.0f)));
-                        vec3 vy = normalize(cross(n, vx));
-
-                        cva.texture = vec2(dot(cva.position, vx), dot(cva.position, vy)) * 16.0f;
-                        cvb.texture = vec2(dot(cvb.position, vx), dot(cvb.position, vy)) * 16.0f;
-                        cvc.texture = vec2(dot(cvc.position, vx), dot(cvc.position, vy)) * 16.0f;
-                        cvd.texture = vec2(dot(cvd.position, vx), dot(cvd.position, vy)) * 16.0f;
-
-                        //cva.normal = normal_a;
-                        //cvb.normal = normal_a;
-                        //cvd.normal = normal_a;
-                        mesh_vertices.push_back(cva);
-                        mesh_vertices.push_back(cvb);
-                        mesh_vertices.push_back(cvd);
-                        
-                        //cva.normal = normal_b;
-                        //cvd.normal = normal_b;
-                        //cvc.normal = normal_b;
-                        mesh_vertices.push_back(cva);
-                        mesh_vertices.push_back(cvd);
-                        mesh_vertices.push_back(cvc);
-
-                        collision_triangles.push_back(va);
-                        collision_triangles.push_back(vb);
-                        collision_triangles.push_back(vd);
-                        collision_triangles.push_back(va);
-                        collision_triangles.push_back(vd);
-                        collision_triangles.push_back(vc);
-                    }
-                }
-
-                axiom::transform3d transform;
-                axiom::texture_range_mesh3d mesh;
-                axiom::collider3d collider;
-                
-                transform.position = vec3(0.0f);
-                transform.orientation = glm::identity<mat3>();
-
-                mesh.vs = mesh_vertices;
-                mesh.texture = &axiom::get_system<main_system>().textures["tilesheet"];
-                mesh.load();
-
-                axiom::create_mesh_collider(collider, collision_triangles);
-                collider.is_static = true;
-
-                uint entity = axiom::insert_entity();
-                axiom::insert_component(entity, transform);
-                axiom::insert_component(entity, mesh);
-                axiom::insert_component(entity, collider);
-            }
-        }
-    }*/
+    create_planet(seed, position, orientation, dimensions, populations, colors, amplitude, noise_freq, noise_offset, age_value, ejecta_value, blend_value, params.num_chunks, params.num_tiles);
 }
-
-struct crater {
-    vec3 position;
-    float radius = 0.1f;
-    float ejecta = 0.0f;
-    float age = 0.0f;
-    float height = 0.0f;
-};
-
-void create_planet(uint seed, vec3 position, mat3 orientation, vec3 dimensions, std::vector<crater_population> populations, std::vector<vec3> colors, float amplitude, float noise_freq, float noise_offset, float age_value, float ejecta_value, float blend_value) {
-    std::vector<mat4> transforms = {
-        get_matrix(vec3(0, 0, 1), vec3(1, 0, 0), vec3(1, 0, 0)),
-        get_matrix(vec3(0, 0, 1), vec3(0, 1, 0), vec3(0, 1, 0)),
-        get_matrix(vec3(-1, 0, 0), vec3(0, 0, 1), vec3(0, 0, 1)),
-        get_matrix(vec3(0, 0, 1), vec3(-1, 0, 0), vec3(-1, 0, 0)),
-        get_matrix(vec3(0, 0, 1), vec3(0, -1, 0), vec3(0, -1, 0)),
-        get_matrix(vec3(1, 0, 0), vec3(0, 0, -1), vec3(0, 0, -1)),
-    };
-    
-    double start_time = axiom::get_time();
-
-    axiom::random32 rand(seed);
-
-    std::unordered_map<ivec3, std::vector<uint>, axiom::hash_coord> partition;
-    int num_buckets = 12;
-
-    float avg_dimension = (dimensions.x + dimensions.y + dimensions.z) / 3.0f;
-    float max_dimension = glm::max(glm::max(dimensions.x, dimensions.y), dimensions.z);
-    vec3 ratio = dimensions / avg_dimension;
-
-    int max_bucket = floor((max_dimension / avg_dimension) * num_buckets);
-
-    struct crater {
-        vec3 position;
-        float radius = 0.1f;
-        float ejecta = 0.0f;
-        float age = 0.0f;
-        float height = 0.0f;
-    };
-
-    std::vector<crater> craters;
-
-    auto smooth_min = [](float a, float b, float k) {
-        if(k < 0.0f) {
-            a = -a;
-            b = -b;
-            k = -k;
-            
-            float r = exp2(-a/k) + exp2(-b/k);
-            return k*log2(r);
-        } else {
-            float r = exp2(-a/k) + exp2(-b/k);
-            return -k*log2(r);
-        }
-    };
-
-    auto crater_func = [&](float f, float depth, float steepness_inner, float steepness_outer, float rim_width) {
-        float walls = (f * f - 1) * steepness_inner;
-        float rim = (f - (1.0f + rim_width));
-        rim = rim * rim * steepness_outer;
-
-        float result = smooth_min(walls, rim, 0.05f);
-
-        return result;
-    };
-
-    auto big_crater_func = [&](float f, float depth, float steepness_inner, float steepness_outer, float rim_width, float steepness_center, float width_center) {
-        float walls = (f * f - 1) * steepness_inner;
-        float rim = (f - (1.0f + rim_width));
-        rim = rim * rim * steepness_outer;
-
-        float peak_pos = f - width_center;
-        peak_pos = peak_pos * peak_pos * steepness_center;
-        peak_pos += depth;
-        if(f > width_center) peak_pos = glm::mix(depth, -1.0f, glm::smoothstep(width_center, 1.5f, f));
-
-        float peak_neg = f + width_center;
-        peak_neg = glm::max(peak_neg, 0.0f);
-        peak_neg = peak_neg * peak_neg * steepness_center;
-
-        float crater_floor = glm::mix(depth, -1.0f, glm::smoothstep(1.0f, 1.5f, f));
-
-        float peak = smooth_min(peak_pos, peak_neg, 0.05f);
-
-        float result = smooth_min(walls, rim, 0.05f);
-        if(steepness_center != 0.0f) result = smooth_min(result, peak, -0.05f);
-        result = smooth_min(result, crater_floor, -0.05f);
-
-        return result;
-    };
-
-    auto bias_func = [](float x, float bias) {
-        float k = pow(1 - bias, 3);
-        return x * k / (x * k - x + 1);
-    };
-    
-    int num_prev = 0;
-    for(int j = 0; j < populations.size(); ++j) {
-        crater_population& pop = populations[j];
-
-        for(int i = 0; i < pop.num_craters; ++i) {
-            crater c;
-            c.position = rand.unit_vector() * ratio;
-            float r = abs(rand());
-            r = bias_func(r, 0.6f);
-
-            c.radius = r * (pop.max_size - pop.min_size) + pop.min_size;
-
-            if(pop.num_craters - i < pop.num_ejecta) {
-                c.ejecta = c.radius * (5.0f + 15.0f * abs(rand()));
-                //c.ejecta = c.radius * 9.0f;
-
-                c.age = float(pop.num_craters - i) / pop.num_ejecta;
-                c.age = pow(c.age, age_value);
-                //c.age = pow(c.age, 4.0f);
-            }
-
-            craters.push_back(c);
-
-
-
-            float max_rad = glm::max(c.radius * 1.5f, c.ejecta);
-
-            vec3 mmin = c.position - max_rad;
-            vec3 mmax = c.position + max_rad;
-            ivec3 rmin = floor(mmin * float(num_buckets));
-            ivec3 rmax = floor(mmax * float(num_buckets));
-
-            for(int z = rmin.z; z <= rmax.z; ++z) {
-                for(int y = rmin.y; y <= rmax.y; ++y) {
-                    for(int x = rmin.x; x <= rmax.x; ++x) {
-                        ivec3 bucket = ivec3(x, y, z);
-
-                        if(!partition.contains(bucket)) partition.emplace(bucket, std::vector<uint>());
-
-                        auto& p = partition[bucket];
-
-                        p.push_back(i + num_prev);
-                    }
-                }
-            }
-        }
-
-        num_prev += pop.num_craters;
-    }
-
-    auto sample_moon_noise = [](vec3 pos, float seed) {
-        float n0 = axiom::noise_gen::perlin_noise(pos, 0.45f, 5, seed, 0.5075f);
-
-        vec3 forward = vec3(1, 0, 0);
-        float d = glm::smoothstep(0.0f, 1.0f, dot(normalize(pos), forward));
-        d -= 0.15f;
-        n0 -= d * 0.7f;
-        n0 += 0.5f;
-        n0 *= 1.5f;
-
-        return n0;
-    };
-
-    auto get_noise = [&](vec3 pos, float seed, float amplitude, int num_craters) {
-        float n = sample_moon_noise(pos / avg_dimension, seed);
-        n *= amplitude;
-        
-        vec3 n_pos = pos / avg_dimension;
-        ivec3 b = floor(n_pos * float(num_buckets));
-        auto& bucket = partition[b];
-
-        float crater_depth = n;
-        
-        for(int i : bucket) {
-            if(i < num_craters) {
-                crater& c = craters[i];
-                
-                vec3 rel = c.position - n_pos;
-                float dist = length(rel);
-                dist /= c.radius;
-
-                float variation = 0.35f;
-
-                if(dist < 1.5f + variation) {
-                    float noise_v = axiom::noise_gen::perlin_noise(rel / c.radius, 0.2f, 2.0f, seed) * 0.25f;
-                    noise_v += axiom::noise_gen::perlin_noise(rel / c.radius, 0.5f, 2.0f, seed);
-                    dist += noise_v * variation;
-                    dist = glm::max(0.001f, dist);
-
-                    if(dist < 1.5f) {
-                        float crater_scale = c.radius * 0.075;
-                        float height = crater_scale * avg_dimension;
-                        float depth = height;
-
-                        float ret;
-                        if(c.radius > 0.05f) ret = big_crater_func(dist, -c.radius * 0.125f, 1.75f, 1.75f, 0.5f, 3.0f, 0.5f);
-                        else ret = crater_func(dist, -depth, 1.25f, 1.75f, 0.5f);
-
-                        float new_depth = -ret;
-                        
-                        float floor = c.height - height;
-                        float target_height = floor - crater_depth;
-                        if(target_height < 0.0) {
-                            float a = target_height * new_depth;
-                            crater_depth = a + crater_depth;
-                        }
-                    }
-                }
-            }
-        }
-    
-        return crater_depth;
-    };
-
-    auto get_color = [&](vec3 pos, float elevation) {
-        vec3 p_i = pos * dimensions;
-
-        float sep = blend_value * amplitude;
-        float blend = (elevation + (sep * 0.5f)) / sep;
-        blend = glm::clamp(blend, 0.0f, 1.0f);
-        
-        vec3 n_pos = p_i / avg_dimension;
-        ivec3 b = floor(n_pos * float(num_buckets));
-        auto& bucket = partition[b];
-
-        float ff = 0.0;
-        
-        for(int i : bucket) {
-            crater& c = craters[i];
-
-            vec3 rel_pos = c.position - n_pos;
-
-            float dist = length(rel_pos);
-
-            if(c.ejecta != 0.0f) {
-                //if(dist < c.ejecta) ff = 1.0;
-                float dist2 = glm::max(0.0f, (dist - c.radius) / (c.ejecta - c.radius));
-                if(dist2 < 1.0) { 
-                    vec3 flattened = glm::normalize(rel_pos - c.position * dot(rel_pos, c.position));
-                    float noise = axiom::noise_gen::ridged_perlin_noise(flattened, 0.25f, 2, i);
-                    noise = 1.0f - noise;
-
-                    dist2 = pow(dist2, 0.75f);
-
-                    float fade = (dist + c.radius * noise * 0.25f - c.radius) / (c.radius * 0.5f);
-                    fade = glm::clamp(fade, 0.0f, 1.0f);
-                    fade = glm::smoothstep(0.0f, 1.0f, fade);
-                    float fade2 = (1.0f - fade) * 0.75f;
-                    fade = 0.75f + fade * 0.25f;
-
-                    float f = (noise * (1.0f - ejecta_value) + ejecta_value) - dist2;
-                    f = glm::max(f * fade, fade2);
-
-                    f = glm::clamp(f, 0.0f, 1.0f);
-
-                    ff = glm::max(ff, f * c.age);
-                }
-            }
-        }
-
-        vec3 c0 = glm::mix(colors[1], colors[3], glm::clamp(ff, 0.0f, 1.0f));
-        vec3 c1 = glm::mix(colors[0], colors[2], glm::clamp(ff, 0.0f, 1.0f));
-
-        vec3 color = glm::mix(c0, c1, blend);
-
-        return color;
-    };
-    
-    for(int i = 0; i < craters.size(); ++i) {
-        crater& c = craters[i];
-        vec3 pos = c.position * avg_dimension;
-
-        float height = get_noise(pos, seed, amplitude, i - 1);
-        c.height = height;
-    }
-    
-    auto get_normal = [&](vec3 pos, vec3 axes) {
-        return normalize(vec3(pos.x / (axes.x * axes.x), pos.y / (axes.y * axes.y), pos.z / (axes.z * axes.z)));
-    };
-
-    auto project = [&](vec3 normal, vec3 axes) {
-        return normalize(normal / axes) * axes;
-    };
-    
-    auto create_m = [&](float width, uint tiles, vec3 origin, mat3 orientation, vec3 p_size, vec3 position, uint seed, mat3 planet_ori) {
-        axiom::collider3d collider;
-        collider.allow_rotation = false;
-        collider.allow_gravity = false;
-        collider.is_static = true;
-
-        std::vector<axiom::texture_range_vertex3d> mesh_vertices;
-        std::vector<uint> mesh_indices;
-
-        std::vector<float> values;
-
-        auto find_pos = [&](ivec2 pos) {
-            vec3 mpos = origin + vec3(vec2(pos) / float(tiles) * width, 0);
-            mpos = orientation * mpos;
-            return normalize(mpos);
-        };
-
-        float diff = width / tiles * glm::max(glm::max(p_size.x, p_size.y), p_size.z);
-
-        for(int y = 0; y < tiles + 1; ++y) {
-            for(int x = 0; x < tiles + 1; ++x) {
-                vec3 pos = find_pos({x, y});
-                values.push_back(get_noise(pos * p_size, seed, amplitude, craters.size()));
-            }
-        }
-
-        std::vector<vec3> mesh_colors;
-        std::vector<vec3> mesh_normals;
-        for(int y = 0; y < tiles + 1; ++y) {
-            float multiplier_y = -1.0f;
-            int y1 = y + 1;
-
-            for(int x = 0; x < tiles + 1; ++x) {
-                float multiplier_x = -1.0f;
-                int x1 = x + 1;
-
-                ivec2 vvi = ivec2(x, y);
-
-                vec3 pos = find_pos(vvi);
-                vec3 p_i = pos * p_size;
-
-                mat3 ori = axiom::rotate_to(vec3(0, 0, 1), glm::normalize(p_i));
-
-                vec3 delta_x = ori * vec3(1, 0, 0);
-                vec3 delta_y = ori * vec3(0, 1, 0);
-
-                vec3 p_x = project(p_i + delta_x * diff, p_size);
-                vec3 p_y = project(p_i + delta_y * diff, p_size);
-
-                float vi = values[vvi.y * (tiles + 1) + vvi.x];
-                float vx = get_noise(p_x, seed, amplitude, craters.size());
-                float vy = get_noise(p_y, seed, amplitude, craters.size());
-
-                vec3 pos_i = p_i + get_normal(p_i, p_size) * vi;
-                vec3 pos_x = p_x + get_normal(p_x, p_size) * (vx);
-                vec3 pos_y = p_y + get_normal(p_y, p_size) * (vy);
-
-                vec3 normal = cross(pos_x - pos_i, pos_y - pos_i);
-                normal = normalize(normal);
-
-                mesh_normals.push_back(normal);
-
-                vec3 color = get_color(pos, vi);
-                mesh_colors.push_back(color);
-            }
-        }
-        
-        std::vector<ivec2> indices = {
-            {0, 0},
-            {1, 0},
-            {1, 1},
-            {0, 0},
-            {1, 1},
-            {0, 1}
-        };
-        
-        for(int y = 0; y < tiles; ++y) {
-            for(int x = 0; x < tiles; ++x) {
-                ivec2 pos = {x, y};
-
-                for(ivec2 v : indices) {
-                    ivec2 new_pos = pos + v;
-
-                    vec3 normal = mesh_normals[new_pos.y * (tiles + 1) + new_pos.x];
-                    vec3 color = mesh_colors[new_pos.y * (tiles + 1) + new_pos.x];
-                    float h = values[new_pos.y * (tiles + 1) + new_pos.x];
-
-                    axiom::texture_range_vertex3d mv;
-                    mv.position = find_pos(new_pos) * p_size;
-                    mv.position += get_normal(mv.position, p_size) * h;
-                    mv.normal = normal;
-
-                    mv.color = vec4(color, 1.0f);
-
-                    mesh_indices.push_back(mesh_vertices.size());
-                    mesh_vertices.push_back(mv);
-                }
-            }
-        }
-
-        std::vector<vec3> triangles;
-
-        // texture mesh
-        vec3 mesh_avg = vec3(0.0f);
-        for(int tt = 0; tt < mesh_indices.size() / 3; ++tt) {
-            axiom::texture_range_vertex3d& v0 = mesh_vertices[tt * 3];
-            axiom::texture_range_vertex3d& v1 = mesh_vertices[tt * 3 + 1];
-            axiom::texture_range_vertex3d& v2 = mesh_vertices[tt * 3 + 2];
-
-            mesh_avg += v0.position;
-            mesh_avg += v1.position;
-            mesh_avg += v2.position;
-
-            vec3 normal = glm::normalize(glm::cross(v0.position - v2.position, v1.position - v2.position));
-            vec3 n = normal;
-
-            normal = normalize(round(normal / glm::max(abs(normal.x), glm::max(abs(normal.y), abs(normal.z)))));
-
-            vec3 tex_x = cross(normal, vec3(0, 1, 0));
-            if(length(tex_x) == 0.0f) tex_x = cross(normal, vec3(0, 0, 1));
-            tex_x = normalize(tex_x);
-            vec3 tex_y = normalize(cross(normal, tex_x));
-
-            vec3 avg_pos = v0.position + v1.position + v2.position;
-            avg_pos /= 3.0f;
-
-            v0.texture = vec2(dot(tex_x, v0.position), dot(tex_y, v0.position)) * 16.0f;
-            v1.texture = vec2(dot(tex_x, v1.position), dot(tex_y, v1.position)) * 16.0f;
-            v2.texture = vec2(dot(tex_x, v2.position), dot(tex_y, v2.position)) * 16.0f;
-
-            v0.texture_range = vec4(72, 0, 16, 16);
-            v1.texture_range = vec4(72, 0, 16, 16);
-            v2.texture_range = vec4(72, 0, 16, 16);
-
-            // change
-            //v0.normal = n;
-            //v1.normal = n;
-            //v2.normal = n;
-        }
-        if(mesh_indices.size()) mesh_avg /= mesh_indices.size();
-
-        for(axiom::texture_range_vertex3d& v : mesh_vertices) {
-            v.position -= mesh_avg;
-        }
-        
-        for(int tt = 0; tt < mesh_indices.size() / 3; ++tt) {
-            axiom::texture_range_vertex3d& v0 = mesh_vertices[tt * 3];
-            axiom::texture_range_vertex3d& v1 = mesh_vertices[tt * 3 + 1];
-            axiom::texture_range_vertex3d& v2 = mesh_vertices[tt * 3 + 2];
-
-            triangles.push_back(v0.position);
-            triangles.push_back(v1.position);
-            triangles.push_back(v2.position);
-        }
-        
-        axiom::transform3d t;
-        t.position = mesh_avg;
-        t.orientation = planet_ori;
-
-        //t.position = apply_matrix(planet_ori, t.position);
-        t.position += position;
-
-        axiom::texture_range_mesh3d mesh;
-        mesh.vs = mesh_vertices;
-        mesh.load();
-        mesh.texture = &axiom::get_system<main_system>().textures["tilesheet"];
-        
-        axiom::create_mesh_collider(collider, triangles);
-        collider.is_static = true;
-
-        //
-
-        uint entity = axiom::insert_entity();
-        axiom::insert_component(entity, t);
-        axiom::insert_component(entity, mesh);
-        axiom::insert_component(entity, collider);   
-        
-        //axiom::collider3d& ccl = ecs.get_component<axiom::collider3d>(entity);
-        //axiom::transform3d& tf = ecs.get_component<axiom::transform3d>(entity);
-
-        //axiom::physics_system3d& ps = ecs.get_system<axiom::physics_system3d>();
-        //ps.create_bounding_box(ccl, tf);
-        //ccl.create_BVH(2, &tf);
-    };
-
-    
-    double setup_time = axiom::get_time();
-
-    int split = 8;
-    float size = 1.0f;
-    uint tiles_per_split = 32;
-
-    for(int i = 0; i < 6; ++i) {
-        mat3 matrix = transforms[i];
-        for(int x = 0; x < split; ++x) {
-            for(int y = 0; y < split; ++y) {
-                vec3 origin = vec3(size * 2.0f / split * x - size, size * 2.0f / split * y - size, size);
-                //std::cout << i << " " << x << " " << y << "\n";
-                
-                //if(i == 0 && x < 16 && y < 16) 
-                create_m(size * 2.0f / split, tiles_per_split, origin, matrix, dimensions, position, seed, orientation);
-            }
-        }
-    }
-    
-    float width = size * 2.0f / split;
-    float tiles = tiles_per_split;
-    float diff = width / tiles * glm::max(glm::max(dimensions.x, dimensions.y), dimensions.z);
-    
-    double end_time = axiom::get_time();
-
-    std::cout << "setup: " << setup_time - start_time << "\n";
-    std::cout << "loop: " << end_time - setup_time << "\n";
-    std::cout << "total: " << end_time - start_time << "\n\n";
-};

@@ -17,6 +17,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_executable(Game 
     src/main.cpp
     src/chat.cpp
+    src/world_gen.cpp
 )
 
 # icon.rc
