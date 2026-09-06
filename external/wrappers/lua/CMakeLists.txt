@@ -1,4 +1,4 @@
-add_library(lua
+add_library(lua STATIC
     ${CMAKE_SOURCE_DIR}/external/lua/lapi.c
     ${CMAKE_SOURCE_DIR}/external/lua/lauxlib.c
     ${CMAKE_SOURCE_DIR}/external/lua/lbaselib.c
@@ -26,7 +26,9 @@ add_library(lua
     ${CMAKE_SOURCE_DIR}/external/lua/lstrlib.c
     ${CMAKE_SOURCE_DIR}/external/lua/ltable.c
     ${CMAKE_SOURCE_DIR}/external/lua/ltablib.c
+    ${CMAKE_SOURCE_DIR}/external/lua/ltests.c
     ${CMAKE_SOURCE_DIR}/external/lua/ltm.c
+    ${CMAKE_SOURCE_DIR}/external/lua/lua.c
     ${CMAKE_SOURCE_DIR}/external/lua/lundump.c
     ${CMAKE_SOURCE_DIR}/external/lua/lutf8lib.c
     ${CMAKE_SOURCE_DIR}/external/lua/lvm.c

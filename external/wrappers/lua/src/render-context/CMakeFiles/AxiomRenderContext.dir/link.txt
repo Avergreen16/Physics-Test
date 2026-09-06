@@ -1,0 +1,2 @@
+C:/msys64/ucrt64/bin/ar.exe qc C:/Users/plane/OneDrive/Documents/GitHub/Physics-Test/build/lib/libAxiomRenderContext.a CMakeFiles/AxiomRenderContext.dir/wrapper.cpp.obj CMakeFiles/AxiomRenderContext.dir/target.cpp.obj CMakeFiles/AxiomRenderContext.dir/func.cpp.obj CMakeFiles/AxiomRenderContext.dir/camera2d.cpp.obj CMakeFiles/AxiomRenderContext.dir/camera3d.cpp.obj
+C:/msys64/ucrt64/bin/ranlib.exe C:/Users/plane/OneDrive/Documents/GitHub/Physics-Test/build/lib/libAxiomRenderContext.a

@@ -1,14 +1,14 @@
 layout top-left
-screen [color = "blue"] {
+screen [color = "blue", ] {
     row-split {
         padding 0
         panel {
-            tab [label = "Settings" color = "blue"] {
-                padding (0 0 0 2)
+            tab [label = "Settings", color = "blue"] {
+                padding (0, 0, 0, 2)
                 panel {
                     padding 6
                     grid [columns = 3] {
-                        text [label = "light azimuth" wrap = false]
+                        text [label = "light azimuth", wrap = false]
                         spacer
                         slider [
                             size = (192 16)
@@ -18,7 +18,7 @@ screen [color = "blue"] {
                             color = "blue"
                             callback = "azimuth_callback"
                         ]
-                        text [label = "light altitude" wrap = false]
+                        text [label = "light altitude", wrap = false]
                         spacer
                         slider [
                             size = (192 16)
@@ -31,7 +31,7 @@ screen [color = "blue"] {
                     }
                 }
             }
-            tab [label = "Chat" color = "blue"] {
+            tab [label = "Chat", color = "blue"] {
                 # fill in later
             }
         }
@@ -39,10 +39,10 @@ screen [color = "blue"] {
             padding 0
             render [draw = "base_render"]
             column {
-                text [label = "FPS:" callback = "fps_func"]
-                text [label = "position:" callback = "position_func"]
-                text [label = "direction:" callback = "direction_func"]
-                match [color = (0 0 0 0.25)]
+                text [label = "FPS:", callback = "fps_func"]
+                text [label = "position:", callback = "position_func"]
+                text [label = "direction:", callback = "direction_func"]
+                match [color = (0, 0, 0, 0.25)]
             }
             layout top-right
             padding 10

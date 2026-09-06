@@ -14,54 +14,40 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_executable(Game 
+set(BUILD_SHARED_LIBS OFF)
+
+add_executable(Example
     src/main.cpp
-    src/chat.cpp
 )
 
 # icon.rc
 
-#axiom_set_icon(Game)
+#axiom_set_icon(Example)
 
-target_include_directories(Game PUBLIC 
-    ${CMAKE_SOURCE_DIR}/external/axiom/include
-    ${CMAKE_SOURCE_DIR}/external/glm
-    ${CMAKE_SOURCE_DIR}/external/glad
-    ${CMAKE_SOURCE_DIR}/external/stb
+target_include_directories(Example PUBLIC 
+    ${CMAKE_SOURCE_DIR}/external/axiom
+
     ${CMAKE_SOURCE_DIR}/external/lua
-
     ${CMAKE_SOURCE_DIR}/src
 )
 
-set_target_properties(Game PROPERTIES OUTPUT_NAME "Physics-Test")
+set_target_properties(Example PROPERTIES OUTPUT_NAME "axiom-example")
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/assimp)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glad)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glfw)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glm)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/xsimd)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/wrappers/asio)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/wrappers/lua)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/wrappers/stb)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/json)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glfw)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glad)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glm)
+
+set(AXIOM_INCLUDE_RENDER ON)
+set(AXIOM_INCLUDE_UI ON)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/axiom)
 
-target_link_libraries(Game 
-    PRIVATE
-        AxiomWindow
-        AxiomMath
-        AxiomECS
-        AxiomRender
-        AxiomUI
-        AxiomScene
-        AxiomPhysics2D
-        AxiomPhysics3D
-        
-        glm
-        nlohmann_json
+target_link_libraries(Example PRIVATE
+    Axiom
+    lua
 )
 
-target_compile_options(Game PRIVATE
+target_compile_options(Example PRIVATE
     -O3
     -fpermissive
     -march=native
