@@ -26,11 +26,16 @@ struct ttf_glyph {
     ivec4 bounding_box;
 
     std::vector<ttf_contour> contours;
+    std::vector<byte> bytecode_glyf;
 };
 
 struct ttf_font {
     std::map<uint, ttf_glyph> glyphs;
     ivec4 bounding_box;
+    uint base_unit;
+
+    std::vector<byte> bytecode_fpgm;
+    std::vector<byte> bytecode_prep;
 };
 
 ttf_font font;
@@ -152,6 +157,9 @@ void process_ttf(std::string filepath) {
         uint16_t flags = read_ushort_be();
         uint16_t units_per_em = read_ushort_be();
 
+        font.base_unit = units_per_em;
+        std::cout << font.base_unit << "\n";
+
         int64_t created_timestamp = read_ulong_be();
         int64_t modified_timestamp = read_ulong_be();
 
@@ -167,6 +175,7 @@ void process_ttf(std::string filepath) {
         uint16_t mac_style = read_ushort_be();
 
         uint16_t smallest_readable_size = read_ushort_be();
+        std::cout << "SMALLEST SIZE " << smallest_readable_size << "\n";
         int16_t font_direction = read_short_be();
         loca_format = read_short_be(); // <- what we want
         int16_t glyph_format = read_short_be();
@@ -361,7 +370,10 @@ void process_ttf(std::string filepath) {
                 uint16_t num_vertices = read_short_be() + 1;
 
                 uint16_t instruction_length = read_ushort_be();
-                cursor += instruction_length;
+                glyph.bytecode_glyf.reserve(instruction_length);
+                for(int i = 0; i < instruction_length; ++i) {
+                    glyph.bytecode_glyf.push_back(read_byte());
+                }
 
                 std::vector<byte> flags;
                 flags.reserve(num_vertices);
@@ -832,7 +844,7 @@ static_assert(offsetof(clip_space, radius) == 16);
 static_assert(offsetof(clip_space, parent) == 20);
 
 int main(int argc, char** argv) {
-    process_ttf("res/Outfit-Regular.ttf");
+    process_ttf("res/Capriola-Regular.ttf");
 
     axiom::window window(ivec2(256), ivec2(512), 0, "Axiom");
 
@@ -856,8 +868,7 @@ int main(int argc, char** argv) {
 
     // create target callback and pass in camera
 
-    auto create_glyph = [](uint index, ivec2 size, axiom::texture& texture) {
-        std::vector<byte> colors(size.x * size.y * 4);
+    auto create_glyph = [](uint index, int units, axiom::texture& texture) {
 
         auto& glyph = font.glyphs[index];
 
@@ -868,66 +879,94 @@ int main(int argc, char** argv) {
 
             p1 = a0 + (a1 - a0) * a;
 
-            return a >= 0.0f && a < 1.0f; //!(a0.x == a1.x) && 
+            return !(a0.y == a1.y) && a >= 0.0f && a < 1.0f; //!(a0.x == a1.x) && 
         };
 
+        vec2 psize = vec2(glyph.bounding_box.zw() - glyph.bounding_box.xy());
+        ivec2 size = glm::ceil(psize / float(font.base_unit) * float(units));
+        psize = (vec2(size) / float(units)) * float(font.base_unit);
+
+        std::vector<byte> colors(size.x * size.y * 4);
         for(int k = 0; k < size.x * size.y; ++k) {
-            vec2 pt = vec2(k % size.x + 0.5f, k / size.x + 0.5f) / vec2(size) * 1.1f - 0.05f;
-            vec2 size = vec2(glyph.bounding_box.zw() - glyph.bounding_box.xy());
-            pt = pt * size + vec2(glyph.bounding_box.xy());
-            float w = glm::max(glyph.bounding_box.z - glyph.bounding_box.x, glyph.bounding_box.w - glyph.bounding_box.y) * 0.25f;
+            vec2 pt = vec2(k % size.x, k / size.x);
+            //float w = glm::max(glyph.bounding_box.z - glyph.bounding_box.x, glyph.bounding_box.w - glyph.bounding_box.y) * 0.25f;
 
             float min_width = glm::min(size.x, size.y);
 
-            int count = 0;
-            float min_dist = axiom::max_float;
-            
-            for(int i = 0; i < glyph.contours.size(); ++i) {
-                auto& contour = glyph.contours[i];
+            uint supersample = 8;
 
-                for(int j = 0; j < contour.points.size(); ++j) {
-                    int a = j;
-                    int b = (j + 1) % contour.points.size();
+            float frac = 0.0f;
 
-                    auto& point_a = contour.points[a];
-                    auto& point_b = contour.points[b];
+            for(int ii = 0; ii < supersample * supersample; ++ii) {
+                vec2 offset = vec2(ii % supersample + 0.5f, ii / supersample + 0.5f) / float(supersample);
+                vec2 pt_o = pt + offset;
 
-                    vec2 pt_s;
+                pt_o = (pt_o / vec2(size)) * psize + vec2(glyph.bounding_box.xy());
 
-                    bool did_intersect = intersect(point_a.point, point_b.point, pt, pt_s);
+                int count = 0;
+                float min_dist = axiom::max_float;
+                
+                for(int i = 0; i < glyph.contours.size(); ++i) {
+                    auto& contour = glyph.contours[i];
 
-                    if(pt_s.x < pt.x) did_intersect = false;
+                    for(int j = 0; j < contour.points.size(); ++j) {
+                        int a = j;
+                        int b = (j + 1) % contour.points.size();
 
-                    if(did_intersect) {
-                        if(point_a.point.y < point_b.point.y) {
-                            ++count;
-                        } else {
-                            --count;
+                        auto& point_a = contour.points[a];
+                        auto& point_b = contour.points[b];
+
+                        vec2 pt_s;
+
+                        bool did_intersect = intersect(point_a.point, point_b.point, pt_o, pt_s);
+
+                        if(pt_s.x < pt_o.x) did_intersect = false;
+
+                        if(did_intersect) {
+                            if(point_a.point.y < point_b.point.y) {
+                                ++count;
+                            } else {
+                                --count;
+                            }
                         }
+
+                        //
+
+                        /*
+                        vec2 a0 = point_a.point;
+                        vec2 a1 = point_b.point;
+
+                        vec2 r = normalize(a1 - a0);
+                        vec2 rx = vec2(r.y, -r.x);
+
+                        vec2 rel = pt - a0;
+                        rel -= rx * dot(rel, rx);
+
+                        float l = dot(r, rel);
+                        l = glm::clamp(l, 0.0f, length(a1 - a0));
+
+                        vec2 point = a0 + r * l;
+
+                        float dist = length((pt_o - point) / size);
+
+                        min_dist = glm::min(dist, min_dist);
+                        */
                     }
-
-                    //
-
-                    vec2 a0 = point_a.point;
-                    vec2 a1 = point_b.point;
-
-                    vec2 r = normalize(a1 - a0);
-                    vec2 rx = vec2(r.y, -r.x);
-
-                    vec2 rel = pt - a0;
-                    rel -= rx * dot(rel, rx);
-
-                    float l = dot(r, rel);
-                    l = glm::clamp(l, 0.0f, length(a1 - a0));
-
-                    vec2 point = a0 + r * l;
-
-                    float dist = length((pt - point) / size);
-
-                    min_dist = glm::min(dist, min_dist);
+                }
+                
+                if(count != 0) {
+                    frac += 1.0f;
                 }
             }
 
+            frac = (1.0f - frac / (supersample * supersample)) * 0xFF;
+
+            colors[k * 4] = frac;
+            colors[k * 4 + 1] = frac;
+            colors[k * 4 + 2] = frac;
+            colors[k * 4 + 3] = 0xFF;
+
+            /*
             float f = min_dist * 255;
             if(count != 0) {
                 colors[k * 4] = glm::clamp((int)glm::round(127.5f + f), 0x00, 0xFF);
@@ -940,11 +979,14 @@ int main(int argc, char** argv) {
                 colors[k * 4 + 2] = 0x00;
                 colors[k * 4 + 3] = 0xFF;
             }
+            */
         }
 
         axiom::texture_asset asset = axiom::texture_asset::load(colors, size, 4);
 
-        texture.load(asset, axiom::texture_format::RGBA8, 5);
+        texture.load(asset, axiom::texture_format::RGBA8, 0);
+        
+        return size;
     };
     
     auto target_callback = [&window, camera_entity](axiom::render_target& target) {
@@ -1101,7 +1143,7 @@ int main(int argc, char** argv) {
 
         axiom::text_widget::insert("Glyph Index", axiom::text_alignment::LEFT, false);
         axiom::spacer_widget::insert(vec2(0, 0), vec2(axiom::max_float, 0));
-        axiom::slider_widget::insert(vec2(128.0f, 10.0f), 4, axiom::color_magenta, vec2(0, font.glyphs.size()), 1, 0, "", 
+        axiom::slider_widget::insert(vec2(512.0f, 10.0f), 4, axiom::color_magenta, vec2(0, font.glyphs.size()), 1, 0, "", 
             [](axiom::slider_widget& widget) {
                 widget.text[0]->string = axiom::to_base(int64_t(widget.current_value), 10);
 
@@ -1111,7 +1153,7 @@ int main(int argc, char** argv) {
         
         axiom::text_widget::insert("texture res X", axiom::text_alignment::LEFT, false);
         axiom::spacer_widget::insert(vec2(0, 0), vec2(axiom::max_float, 0));
-        axiom::slider_widget::insert(vec2(128.0f, 10.0f), 4, axiom::color_magenta, vec2(12, 120), 1, 12, "", 
+        axiom::slider_widget::insert(vec2(128.0f, 10.0f), 4, axiom::color_magenta, vec2(4, 40), 1, 16, "", 
             [](axiom::slider_widget& widget) {
                 widget.text[0]->string = axiom::to_base(int64_t(widget.current_value), 10);
 
@@ -1121,7 +1163,7 @@ int main(int argc, char** argv) {
         
         axiom::text_widget::insert("texture res Y", axiom::text_alignment::LEFT, false);
         axiom::spacer_widget::insert(vec2(0, 0), vec2(axiom::max_float, 0));
-        axiom::slider_widget::insert(vec2(128.0f, 10.0f), 4, axiom::color_magenta, vec2(12, 120), 1, 12, "", 
+        axiom::slider_widget::insert(vec2(128.0f, 10.0f), 4, axiom::color_magenta, vec2(4, 40), 1, 16, "", 
             [](axiom::slider_widget& widget) {
                 widget.text[0]->string = axiom::to_base(int64_t(widget.current_value), 10);
 
@@ -1135,24 +1177,37 @@ int main(int argc, char** argv) {
     {
         auto target_callback = [&create_glyph, &window, camera_entity](axiom::render_target& target) {
             static axiom::texture texture;
-            create_glyph(glyph_index, glyph_size, texture);
+            ivec2 gsize = create_glyph(glyph_index, glyph_size.y, texture);
 
             target.framebuffer.bind();
-            target.framebuffer.clear(vec4(0.0f, 0.0f, 0.0f, 1.0f));
+            target.framebuffer.clear(vec4(1.0f, 1.0f, 1.0f, 1.0f));
             
-            std::vector<vec2> vs = {
-                vec2(-1.0f, -1.0f),
-                vec2(1.0f, -1.0f),
-                vec2(1.0f, 1.0f),
-                vec2(-1.0f, -1.0f),
-                vec2(1.0f, 1.0f),
-                vec2(-1.0f, 1.0f),
+            std::vector<vec4> vs = {
+                vec4(-1.0f, -1.0f, 0.0f, 0.0f),
+                vec4(1.0f, -1.0f, 1.0f, 0.0f),
+                vec4(1.0f, 1.0f, 1.0f, 1.0f),
+                vec4(-1.0f, -1.0f, 0.0f, 0.0f),
+                vec4(1.0f, 1.0f, 1.0f, 1.0f),
+                vec4(-1.0f, 1.0f, 0.0f, 1.0f),
             };
+
+            vec2 size = gsize;
+            vec2 offset = vec2((ivec2(size)) % 2);
+            for(vec4& v : vs) {
+                v.x = v.x * size.x + offset.x;
+                v.y = v.y * size.y + offset.y;
+
+                std::cout << v.x << "\n";
+
+                v.x /= target.size.x;
+                v.y /= target.size.y;
+            }
 
             auto& vertices = axiom::get_vertices();
 
-            vertices.vertex_buffer_data(vs.data(), vs.size(), sizeof(vec2), GL_STREAM_DRAW);
-            vertices.add_vertex_attribute(0, 2, GL_FLOAT, false, sizeof(vec2), 0);
+            vertices.vertex_buffer_data(vs.data(), vs.size(), sizeof(vec4), GL_STREAM_DRAW);
+            vertices.add_vertex_attribute(0, 2, GL_FLOAT, false, sizeof(vec4), 0);
+            vertices.add_vertex_attribute(1, 2, GL_FLOAT, false, sizeof(vec4), sizeof(float) * 2);
 
             texture.bind(0);
 
