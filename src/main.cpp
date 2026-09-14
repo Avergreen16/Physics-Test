@@ -180,23 +180,13 @@ void render_grid(uint camera_entity, axiom::framebuffer& framebuffer) {
     vertices.draw_vertices_triangles();
 }
 
-struct clip_space {
-    vec4 range;
-    float radius;
-    uint parent = 0xFFFFFFFF;
-};
-static_assert(sizeof(clip_space) == 24);
-static_assert(offsetof(clip_space, range) == 0);
-static_assert(offsetof(clip_space, radius) == 16);
-static_assert(offsetof(clip_space, parent) == 20);
-
 int main(int argc, char** argv) {
     axiom::window window(ivec2(256), ivec2(512), 0, "Axiom");
 
     axiom::render_init(&window);  
     axiom::ui_init(&window);
 
-    axiom::ttf_font font = axiom::process_ttf("res/Oxanium-Medium.ttf");
+    axiom::ttf_font font = axiom::process_ttf("res/Roboto-Regular.ttf");
     axiom::ecs.get_system<axiom::ui_system>().fonts.push_back(std::move(font));
 
     // create and initialize camera
@@ -351,7 +341,7 @@ int main(int argc, char** argv) {
             {}
         );
 
-        axiom::screen_widget::insert("AXIOM", axiom::color_magenta, &window);
+        axiom::screen_widget::insert("Axiom", axiom::color_magenta, &window);
         axiom::render_widget::insert(&render_target, 0, widget_callback);
     }
 
@@ -462,7 +452,7 @@ int main(int argc, char** argv) {
         std::string lipsum = "Sed aliquet risus eu orci tristique ullamcorper. Nam sit amet leo eu enim dictum efficitur in eu orci. Vivamus quis nulla ac massa tincidunt volutpat. Vestibulum pellentesque mattis enim eget feugiat. Nullam eu tortor non dolor dignissim tristique at ut eros. Aliquam pretium at mi sit amet ornare. In mi massa, finibus eu quam id, malesuada sagittis mauris. Aliquam porttitor tellus ut dolor euismod laoreet. Aliquam viverra ut ipsum eu feugiat. Etiam sit amet porta massa. Cras vestibulum a sem vitae suscipit. Suspendisse eros nulla, volutpat vitae auctor pharetra, vestibulum quis sem. Maecenas malesuada nulla ac erat feugiat, dignissim condimentum quam fringilla. Aenean consequat metus eu leo cursus interdum.";
 
         ui_system.input_reset();
-        axiom::window_widget::insert("AXIOM", ivec2(200, 200), ivec2(400, 100), axiom::color_purple);
+        axiom::window_widget::insert("Axiom", ivec2(200, 200), ivec2(400, 100), axiom::color_purple);
         axiom::panel_widget::insert();
         axiom::scroll_widget::insert(6.0f, true);
         ui_system.buffer(vec4(4.0f));
@@ -479,10 +469,23 @@ int main(int argc, char** argv) {
 
         static axiom::storage_buffer storage_buffer;
         if(!storage_buffer.initialized) storage_buffer.init();
-        std::vector<clip_space> clip_spaces = {
-            clip_space(vec4(0.0f, 0.0f, target.size), 10.0f, 0xFFFFFFFF),
+
+        struct cspace {
+            axiom::clip_space space;
+            float padding[2];
         };
-        storage_buffer.buffer_data(clip_spaces.data(), clip_spaces.size() * sizeof(clip_space), GL_STREAM_DRAW);
+        static_assert(sizeof(cspace) == 32);
+
+        std::vector<cspace> spaces;
+        for(auto& cs : ui_system.clip_spaces) {
+            spaces.push_back({cs});
+        }
+        storage_buffer.buffer_data(spaces.data(), spaces.size() * sizeof(cspace), GL_STREAM_DRAW);
+
+        std::cout << "\nCLIP SPACES\n";
+        for(auto& clip_space : ui_system.clip_spaces) {
+            std::cout << clip_space.range << " " << clip_space.radius << "\n";
+        }
 
         //
 
@@ -491,8 +494,8 @@ int main(int argc, char** argv) {
         vertices.add_vertex_attribute(0, 3, GL_FLOAT, false, sizeof(axiom::ui_vertex), 0);
         vertices.add_vertex_attribute(1, 2, GL_FLOAT, false, sizeof(axiom::ui_vertex), sizeof(float) * 3);
         vertices.add_vertex_attribute(2, 4, GL_FLOAT, false, sizeof(axiom::ui_vertex), sizeof(float) * 5);
-        vertices.add_vertex_attribute(3, 4, GL_FLOAT, false, sizeof(axiom::ui_vertex), sizeof(float) * 9);
-        vertices.add_vertex_attribute(4, 1, GL_UNSIGNED_INT, false, sizeof(axiom::ui_vertex), sizeof(float) * 13);
+        vertices.add_vertex_attribute(3, 1, GL_UNSIGNED_INT, false, sizeof(axiom::ui_vertex), sizeof(float) * 9);
+        vertices.add_vertex_attribute(4, 1, GL_UNSIGNED_INT, false, sizeof(axiom::ui_vertex), sizeof(float) * 10);
 
         //
 
