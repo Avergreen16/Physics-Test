@@ -18,6 +18,7 @@ set(BUILD_SHARED_LIBS OFF)
 
 add_executable(Example
     src/main.cpp
+    src/physics-objects.cpp
 )
 
 # icon.rc
@@ -40,6 +41,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glm)
 
 set(AXIOM_INCLUDE_RENDER ON)
 set(AXIOM_INCLUDE_UI ON)
+set(AXIOM_INCLUDE_PHYSICS3D ON)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/axiom)
 
 target_link_libraries(Example PRIVATE
