@@ -268,13 +268,14 @@ std::function<void(axiom::framebuffer&, axiom::transform3d&, mat4, mat4)> shadow
     fbuffer.bind();
     mat4 model = glm::identity<mat4>();
 
-    glCullFace(GL_FRONT);
-    glEnable(GL_CULL_FACE);
+    //glCullFace(GL_FRONT);
+    //glEnable(GL_CULL_FACE);
 
     float light_contrast = 0.75f;
 
     // render shape
 
+    glDisable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
 
     auto& collector_color = axiom::ecs.collectors["color_mesh3d"];
@@ -346,7 +347,7 @@ std::function<void(axiom::framebuffer&, axiom::transform3d&, mat4, mat4)> shadow
         mesh.vertices->draw_vertices_triangles();
     }
 
-    glDisable(GL_CULL_FACE);
+    //glDisable(GL_CULL_FACE);
 };
 
 int main(int argc, char **argv) {
@@ -466,7 +467,9 @@ int main(int argc, char **argv) {
 
         base_render(camera_entity);
 
-        //render_grid(camera_entity, target.framebuffer);
+        target.shadow->call();
+
+        render_grid(camera_entity, target.framebuffer);
     };
 
     auto widget_callback = [camera_entity, &window](axiom::render_widget *widget) {
@@ -573,7 +576,9 @@ int main(int argc, char **argv) {
         attachment, {}
     );
     
-    axiom::ui_system& ui_system = axiom::ecs.get_system<axiom::ui_system>(); 
+    axiom::shadow_renderer::create(5, 8.0f, 1.0f / 16.0f, 2048, camera_entity, rt, shadow_func);
+    
+    static axiom::ui_system& ui_system = axiom::ecs.get_system<axiom::ui_system>(); 
     
     {
         axiom::screen_widget::insert("Axiom", axiom::color_red, &window);
@@ -582,7 +587,108 @@ int main(int argc, char **argv) {
         ui_system.buffer(vec4(4.0f));
         ui_system.position(axiom::position_mode::CENTER_LEFT);
         axiom::row_widget::insert();
-        axiom::button_widget::insert(vec2(40, 16), axiom::color_red, "File");
+        axiom::button_widget::insert(vec2(40, 16), axiom::color_red, "File", 
+            [&](axiom::button_widget& w) {
+                if(w.pressed) {
+                    static axiom::menu_node node = {
+                        .children = {
+                            {
+                                "Settings", 
+                                {},
+                                []() {
+                                    std::string lipsum = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed pulvinar sit amet urna eget commodo. Morbi pulvinar ac mauris ut tempus. Mauris aliquet ultrices nulla. In feugiat rutrum pulvinar. Nulla dictum nisl nec auctor venenatis. Etiam vel pretium metus, quis auctor tortor. Quisque quam metus, scelerisque id sagittis ac, iaculis vitae leo. Sed dapibus purus dolor, et vestibulum velit sagittis et. Aliquam vel gravida lectus, eget viverra velit. Cras bibendum, risus in bibendum volutpat, tortor dui cursus augue, quis vulputate ante nibh a ante. Nam varius arcu ac felis vestibulum suscipit. Aliquam mauris justo, placerat sit amet tincidunt eu, auctor eu nunc. Donec suscipit arcu et risus sagittis porttitor. Praesent tellus mauris, semper quis dictum sit amet, tristique in nisl. Aenean nec metus feugiat neque porttitor vulputate vel vitae sem.\nQuisque vulputate imperdiet magna ac porttitor. Vivamus eget neque sed purus tempor placerat pharetra vitae felis. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Nullam dui justo, tempus ut neque sed, finibus vestibulum eros. Morbi egestas risus non justo rhoncus blandit. Nulla facilisis a lacus vitae rutrum. Praesent facilisis ligula et lacus semper tincidunt. Mauris at urna justo. Vivamus ornare molestie turpis vulputate auctor.\nSuspendisse pellentesque, urna consectetur suscipit dapibus, leo felis scelerisque sapien, nec elementum risus risus ac ipsum. Cras interdum massa neque. In lacinia volutpat ex at pretium. Pellentesque eleifend eu elit eu fermentum. Ut eros erat, viverra vel feugiat vitae, pulvinar id dui. Sed mattis lorem ac sapien eleifend, vitae finibus turpis suscipit. Mauris viverra nunc non eros efficitur, non efficitur odio porttitor. Aenean sed eros vitae tortor hendrerit pretium at a tellus. Nulla vel accumsan justo. Etiam dignissim ac justo nec pharetra. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Aliquam maximus aliquam tempus. Aenean et dui ullamcorper, consectetur arcu non, condimentum est. Vivamus in neque sit amet dolor feugiat sollicitudin at quis felis. In hac habitasse platea dictumst.";
+
+                                    ui_system.input_reset();
+                                    ui_system.position(axiom::position_mode::TOP_LEFT);
+                                    axiom::window_widget::insert("Axiom", ivec2(200, 200), ivec2(400, 100), axiom::color_red);
+                                    axiom::panel_widget::insert();
+                                    axiom::scroll_widget::insert(6.0f, true);
+                                    ui_system.buffer(vec4(6.0f));
+
+                                    axiom::grid_widget::insert(3);
+                                    ui_system.position(axiom::position_mode::CENTER_LEFT);
+
+                                    axiom::text_widget::insert("Light Altitude", axiom::text_alignment::LEFT, false);
+                                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                                    axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(-90.0f, 90.0f), 0.0f, 35.0f, "", 
+                                        [](axiom::slider_widget& self) {
+                                            if(self.pressed) {
+                                                axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].altitude = self.current_value;
+                                            } else {
+                                                self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].altitude;
+                                            }
+                                            
+                                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                                        }
+                                    );
+
+                                    axiom::text_widget::insert("Light Azimuth", axiom::text_alignment::LEFT, false);
+                                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                                    axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(-180.0f, 180.0f), 0.0f, 0.0f, "", 
+                                        [](axiom::slider_widget& self) {
+                                            if(self.pressed) {
+                                                axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].azimuth = self.current_value;
+                                            } else {
+                                                self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].azimuth;
+                                            }
+                                            
+                                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                                        }
+                                    );
+                                    
+                                    axiom::text_widget::insert("Light Contrast", axiom::text_alignment::LEFT, false);
+                                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                                    axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(0.0f, 1.0f), 0.0f, 1.0f, "", 
+                                        [](axiom::slider_widget& self) {
+                                            if(self.pressed) {
+                                                axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].contrast = self.current_value;
+                                            } else {
+                                                self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].contrast;
+                                            }
+
+                                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                                        }
+                                    );
+                                    
+                                    
+                                    axiom::text_widget::insert("Check?", axiom::text_alignment::LEFT, false);
+                                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                                    ui_system.position(axiom::position_mode::CENTER);
+                                    axiom::checkbox_widget::insert(vec2(16.0f), axiom::color_red, false);
+                                }
+                            },
+                            {
+                                "Lipsum", 
+                                {},
+                                []() {
+                                    std::string lipsum = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed pulvinar sit amet urna eget commodo. Morbi pulvinar ac mauris ut tempus. Mauris aliquet ultrices nulla. In feugiat rutrum pulvinar. Nulla dictum nisl nec auctor venenatis. Etiam vel pretium metus, quis auctor tortor. Quisque quam metus, scelerisque id sagittis ac, iaculis vitae leo. Sed dapibus purus dolor, et vestibulum velit sagittis et. Aliquam vel gravida lectus, eget viverra velit. Cras bibendum, risus in bibendum volutpat, tortor dui cursus augue, quis vulputate ante nibh a ante. Nam varius arcu ac felis vestibulum suscipit. Aliquam mauris justo, placerat sit amet tincidunt eu, auctor eu nunc. Donec suscipit arcu et risus sagittis porttitor. Praesent tellus mauris, semper quis dictum sit amet, tristique in nisl. Aenean nec metus feugiat neque porttitor vulputate vel vitae sem.\nQuisque vulputate imperdiet magna ac porttitor. Vivamus eget neque sed purus tempor placerat pharetra vitae felis. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Nullam dui justo, tempus ut neque sed, finibus vestibulum eros. Morbi egestas risus non justo rhoncus blandit. Nulla facilisis a lacus vitae rutrum. Praesent facilisis ligula et lacus semper tincidunt. Mauris at urna justo. Vivamus ornare molestie turpis vulputate auctor.\nSuspendisse pellentesque, urna consectetur suscipit dapibus, leo felis scelerisque sapien, nec elementum risus risus ac ipsum. Cras interdum massa neque. In lacinia volutpat ex at pretium. Pellentesque eleifend eu elit eu fermentum. Ut eros erat, viverra vel feugiat vitae, pulvinar id dui. Sed mattis lorem ac sapien eleifend, vitae finibus turpis suscipit. Mauris viverra nunc non eros efficitur, non efficitur odio porttitor. Aenean sed eros vitae tortor hendrerit pretium at a tellus. Nulla vel accumsan justo. Etiam dignissim ac justo nec pharetra. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Aliquam maximus aliquam tempus. Aenean et dui ullamcorper, consectetur arcu non, condimentum est. Vivamus in neque sit amet dolor feugiat sollicitudin at quis felis. In hac habitasse platea dictumst.";
+
+                                    ui_system.input_reset();
+                                    ui_system.position(axiom::position_mode::TOP_LEFT);
+                                    axiom::window_widget::insert("Axiom", ivec2(200, 200), ivec2(400, 100), axiom::color_red);
+                                    axiom::panel_widget::insert();
+                                    axiom::scroll_widget::insert(6.0f, true);
+                                    ui_system.buffer(vec4(6.0f));
+                                    axiom::column_widget::insert();
+
+                                    axiom::text_widget::insert(lipsum, axiom::text_alignment::LEFT);
+                                }
+                            },
+                            {"node_c"},
+                            {"node_d"},
+                            {"node_e"},
+                            {"node_f"},
+                            {"node_g"},
+                            {"node_h"},
+                        }
+                    };
+
+                    ui_system.input_reset();
+                    ui_system.position(axiom::position_mode::TOP_LEFT);
+                    axiom::menu_widget::insert(w.position, 0.5f, axiom::color_red * 0.9f, 160, 20, 80, &node, {});
+                }
+            }
+        );
         axiom::button_widget::insert(vec2(40, 16), axiom::color_red, "Edit");
         axiom::button_widget::insert(vec2(50, 16), axiom::color_red, "Debug");
         axiom::button_widget::insert(vec2(100, 16), axiom::color_red, "Super Secret");
@@ -591,16 +697,7 @@ int main(int argc, char **argv) {
     }
 
     {
-        std::string lipsum = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed pulvinar sit amet urna eget commodo. Morbi pulvinar ac mauris ut tempus. Mauris aliquet ultrices nulla. In feugiat rutrum pulvinar. Nulla dictum nisl nec auctor venenatis. Etiam vel pretium metus, quis auctor tortor. Quisque quam metus, scelerisque id sagittis ac, iaculis vitae leo. Sed dapibus purus dolor, et vestibulum velit sagittis et. Aliquam vel gravida lectus, eget viverra velit. Cras bibendum, risus in bibendum volutpat, tortor dui cursus augue, quis vulputate ante nibh a ante. Nam varius arcu ac felis vestibulum suscipit. Aliquam mauris justo, placerat sit amet tincidunt eu, auctor eu nunc. Donec suscipit arcu et risus sagittis porttitor. Praesent tellus mauris, semper quis dictum sit amet, tristique in nisl. Aenean nec metus feugiat neque porttitor vulputate vel vitae sem.\nQuisque vulputate imperdiet magna ac porttitor. Vivamus eget neque sed purus tempor placerat pharetra vitae felis. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Nullam dui justo, tempus ut neque sed, finibus vestibulum eros. Morbi egestas risus non justo rhoncus blandit. Nulla facilisis a lacus vitae rutrum. Praesent facilisis ligula et lacus semper tincidunt. Mauris at urna justo. Vivamus ornare molestie turpis vulputate auctor.\nSuspendisse pellentesque, urna consectetur suscipit dapibus, leo felis scelerisque sapien, nec elementum risus risus ac ipsum. Cras interdum massa neque. In lacinia volutpat ex at pretium. Pellentesque eleifend eu elit eu fermentum. Ut eros erat, viverra vel feugiat vitae, pulvinar id dui. Sed mattis lorem ac sapien eleifend, vitae finibus turpis suscipit. Mauris viverra nunc non eros efficitur, non efficitur odio porttitor. Aenean sed eros vitae tortor hendrerit pretium at a tellus. Nulla vel accumsan justo. Etiam dignissim ac justo nec pharetra. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Aliquam maximus aliquam tempus. Aenean et dui ullamcorper, consectetur arcu non, condimentum est. Vivamus in neque sit amet dolor feugiat sollicitudin at quis felis. In hac habitasse platea dictumst.";
-
-        ui_system.input_reset();
-        axiom::window_widget::insert("Axiom", ivec2(200, 200), ivec2(400, 100), axiom::color_red);
-        axiom::panel_widget::insert();
-        axiom::scroll_widget::insert(6.0f, true);
-        ui_system.buffer(vec4(6.0f));
-        axiom::column_widget::insert();
-
-        axiom::text_widget::insert(lipsum, axiom::text_alignment::LEFT);
+        
     }
 
     //
@@ -673,8 +770,6 @@ int main(int argc, char **argv) {
         attachment, {}
     );
     window.attach(main_target);
-    
-    axiom::shadow_renderer::create(5, 8.0f, 1.0f / 16.0f, 2048, camera_entity, rt, shadow_func);
 
     while (!window.should_close) {
         window.poll_events();
