@@ -16,24 +16,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(BUILD_SHARED_LIBS OFF)
 
-add_executable(Example
-    src/main.cpp
-    src/physics-objects.cpp
-)
-
-# icon.rc
-
-#axiom_set_icon(Example)
-
-target_include_directories(Example PUBLIC 
-    ${CMAKE_SOURCE_DIR}/external/axiom
-
-    ${CMAKE_SOURCE_DIR}/external/lua
-    ${CMAKE_SOURCE_DIR}/src
-)
-
-set_target_properties(Example PROPERTIES OUTPUT_NAME "axiom-example")
-
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/wrappers/lua)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glfw)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glad)
@@ -42,14 +24,65 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glm)
 set(AXIOM_INCLUDE_RENDER ON)
 set(AXIOM_INCLUDE_UI ON)
 set(AXIOM_INCLUDE_PHYSICS3D ON)
+set(AXIOM_INCLUDE_PHYSICS2D ON)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/axiom)
 
-target_link_libraries(Example PRIVATE
+# icon.rc
+
+#axiom_set_icon(Example)
+
+####
+
+add_executable(example-3d
+    src/3d/main.cpp
+    src/3d/physics-objects.cpp
+)
+
+target_include_directories(example-3d PUBLIC 
+    ${CMAKE_SOURCE_DIR}/external/axiom
+
+    ${CMAKE_SOURCE_DIR}/external/lua
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+set_target_properties(example-3d PROPERTIES OUTPUT_NAME "example-3d")
+
+target_link_libraries(example-3d PRIVATE
     Axiom
     lua
 )
 
-target_compile_options(Example PRIVATE
+target_compile_options(example-3d PRIVATE
+    -O3
+    -fpermissive
+    -march=native
+    -static
+    -Wtemplate-body
+    -g
+)
+
+#####
+
+
+add_executable(example-2d
+    src/2d/main.cpp
+)
+
+target_include_directories(example-2d PUBLIC 
+    ${CMAKE_SOURCE_DIR}/external/axiom
+
+    ${CMAKE_SOURCE_DIR}/external/lua
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+set_target_properties(example-2d PROPERTIES OUTPUT_NAME "example-2d")
+
+target_link_libraries(example-2d PRIVATE
+    Axiom
+    lua
+)
+
+target_compile_options(example-2d PRIVATE
     -O3
     -fpermissive
     -march=native

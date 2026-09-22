@@ -226,6 +226,49 @@ auto base_render = [](uint camera_entity) {
     }
 };
 
+void render_skybox(uint camera_entity, axiom::framebuffer& framebuffer) {
+    axiom::transform3d& camera_transform = axiom::ecs.get_component<axiom::transform3d>(camera_entity);
+    axiom::camera3d& camera = axiom::ecs.get_component<axiom::camera3d>(camera_entity);
+
+    glDisable(GL_DEPTH_TEST);
+
+    auto& vertices = axiom::get_vertices();
+
+    std::vector<vec2> vs = {
+        vec2(-1.0f, -1.0f),
+        vec2(1.0f, -1.0f),
+        vec2(-1.0f, 1.0f),
+        vec2(1.0f, 1.0f)};
+
+    vs = {vs[0], vs[1], vs[3], vs[0], vs[3], vs[2]};
+
+    vertices.vertex_buffer_data(vs.data(), vs.size(), sizeof(vec2), GL_STATIC_DRAW);
+    vertices.add_vertex_attribute(0, 2, GL_FLOAT, false, sizeof(vec2), 0);
+
+    axiom::transform3d grid_transform;
+    grid_transform.position = vec3(0.0f);
+    grid_transform.orientation = glm::identity<mat3>();
+
+    mat4 model = axiom::get_model(grid_transform, camera_transform);
+    mat4 view = axiom::get_view(camera, camera_transform);
+    mat4 proj = axiom::get_proj(camera);
+
+    axiom::get_shader("skybox").use();
+
+    framebuffer.textures[0].bind(0);
+    framebuffer.textures[framebuffer.depth_texture].bind(1);
+    vertices.bind();
+
+    axiom::push_uniform(0, &model);
+    axiom::push_uniform(1, &view);
+    axiom::push_uniform(2, &proj);
+    axiom::push_uniform(3, vec3(axiom::max_float));
+
+    vertices.draw_vertices_triangles();
+    
+    glEnable(GL_DEPTH_TEST);
+}
+
 void render_grid(uint camera_entity, axiom::framebuffer& framebuffer) {
     axiom::transform3d& camera_transform = axiom::ecs.get_component<axiom::transform3d>(camera_entity);
     axiom::camera3d& camera = axiom::ecs.get_component<axiom::camera3d>(camera_entity);
@@ -357,8 +400,21 @@ int main(int argc, char **argv) {
     axiom::render_init(&window);
     axiom::physics3d_init();
 
+    axiom::physics_system3d& physics_system = axiom::ecs.get_system<axiom::physics_system3d>();
+    physics_system.sim_active = false;
+
     axiom::render_system& render_system = axiom::ecs.get_system<axiom::render_system>();
     render_system.targets.reserve(5);
+    
+    {
+        axiom::text_asset vert;
+        axiom::text_asset frag;
+        axiom::texture_asset texasset;
+
+        vert = axiom::text_asset::load(render_system.resource_root + "/shaders/skybox.vert");
+        frag = axiom::text_asset::load(render_system.resource_root + "/shaders/skybox.frag");
+        render_system.shaders.emplace("skybox", std::move(axiom::shader(vert, frag)));
+    }
 
     axiom::ttf_font font = axiom::process_ttf("res/JetBrainsMono-Regular.ttf");
     axiom::ecs.get_system<axiom::ui_system>().fonts.push_back(std::move(font));
@@ -387,11 +443,21 @@ int main(int argc, char **argv) {
     axiom::random32 rand(0xFFF);
 
     {   
+        //vec3 color = axiom::hsv_color(rand() * 0.125f + 5.875f, 0.8f, 1.0f);
+
+        //create_capsule(vec3(0.0f, 0.0f, 16.0f), random_orientation(rand), vec2(0.5f, 2.0f), ivec2(12, 4), color);
+        
+        vec3 color = axiom::hsv_color(rand() * 0.125f + 4.75f, 0.8f, 1.0f);
+
+        create_capsule(vec3(0.0f, 0.0f, 12.0f), random_orientation(rand), vec2(3.0f, 9.0f), ivec2(12, 4), color);
+    }
+
+    {
         mat3 main_ori = random_orientation(rand);
 
         ivec3 array = ivec3(8, 8, 8);
-        vec3 origin = vec3(0.0f, 0.0f, 8.0f);
-        float size = axiom::sqrt3 * 0.5f;
+        vec3 origin = vec3(0.0f, 0.0f, 4.5f);
+        float size = axiom::sqrt3 * 0.25f;
         float sep = size;
 
         for(int x = 0; x < array.x; ++x) {
@@ -450,13 +516,15 @@ int main(int argc, char **argv) {
     // create objects
     world_params params {
         .radii = vec3(100000.0f),
-        .position = vec3(-200000.0f, -80000.0f, 60000.0f),
+        .position = vec3(-300000.0f, -80000.0f, 100000.0f),
         .num_chunks = 8,
         .num_tiles = 16
     };
     make_world(params);
 
     // create target callback and pass in camera
+
+    static bool do_render_grid = false;
 
     auto target_callback = [&window, camera_entity](axiom::render_target& target) {
         target.framebuffer.bind();
@@ -469,44 +537,107 @@ int main(int argc, char **argv) {
 
         target.shadow->call();
 
-        render_grid(camera_entity, target.framebuffer);
+        //render_skybox(camera_entity, target.framebuffer);
+        if(do_render_grid) render_grid(camera_entity, target.framebuffer);
     };
 
-    auto widget_callback = [camera_entity, &window](axiom::render_widget *widget) {
+    auto widget_callback = [camera_entity, &window](axiom::render_widget *self) {
         static bool movement_capture = false;
-        static float movement_speed = 1.0f;
-        static bool cursor_hidden = false;
+        static bool raycast_capture = false;
+        static float movement_speed = 8.0f;
 
-        axiom::ui_system& ui_system = axiom::ecs.get_system<axiom::ui_system>();
+        static uint constraint_index = 0xFFFFFFFF;
+        static float constraint_dist = 0.0f;
+        
         axiom::transform3d& camera_transform = axiom::ecs.get_component<axiom::transform3d>(camera_entity);
-        axiom::camera3d& camera = axiom::ecs.get_component<axiom::camera3d>(camera_entity);
+        axiom::ui_system& ui_system = axiom::ecs.get_system<axiom::ui_system>();
+        auto& psystem = axiom::ecs.get_system<axiom::physics_system3d>();
 
-        if (ui_system.click_capture == widget->self) {
-            if (movement_capture == false) {
-                cursor_hidden = window.cursor_hidden;
-                window.disable_cursor();
+        if(ui_system.window->pressed_buttons.contains(axiom::input_code::KEY_F5)) psystem.sim_active = !psystem.sim_active;
 
-                movement_capture = true;
+        if(ui_system.click_capture == self->self) {
+            if(ui_system.window->input_map[axiom::input_code::KEY_LEFT_CTRL]) {
+                if(raycast_capture == false) {
+                    raycast_capture = true;
+                    
+                    axiom::transform3d& camera_transform = axiom::ecs.get_component<axiom::transform3d>(camera_entity);
+                    axiom::camera3d& camera_cam = axiom::ecs.get_component<axiom::camera3d>(camera_entity);
+
+                    //
+
+                    vec2 screen_pos = (ui_system.window->cursor_pos - self->position) / self->size;
+                    screen_pos = screen_pos * 2.0f - 1.0f;
+
+                    vec4 vertex = vec4(screen_pos, 0.5f, 1.0f);
+
+                    mat4 proj = axiom::get_proj(camera_cam);
+                    mat4 inv_proj = glm::inverse(proj);
+
+                    vertex = inv_proj * vertex;
+                    vertex /= vertex.w;
+
+                    vec3 dir = glm::normalize(camera_transform.orientation * vertex.xyz());
+
+                    //
+
+                    psystem.gravity = [](vec3 pos) {
+                        return vec3(0.0f, 0.0f, 1.0f) * -9.81f;
+                    };
+
+                    uint hit;
+                    uint shape_hit;
+                    vec3 normal;
+                    vec3 point;
+                    std::unordered_set<uint> mask;
+
+                    psystem.raycast(camera_transform.position, dir, 1.0f, 20.0f, 0.0f, mask, &hit, &shape_hit, &normal, &point);
+
+                    axiom::param_collider = hit;
+                    //render_points_shape = hit;
+
+                    if(hit != axiom::NULL_ENTITY) {
+                        axiom::position_constraint pc;
+                        pc.vs = {vec3(1.0f, 0.0f, 0.0f), vec3(0.0f, 1.0f, 0.0f), vec3(0.0f, 0.0f, 1.0f)};
+                        pc.a = hit;
+
+                        axiom::transform3d& target_transform = axiom::ecs.get_component<axiom::transform3d>(hit);
+                        pc.va = transpose(target_transform.orientation) * (point - target_transform.position);
+                        pc.vb = point;
+                        pc.max_impulse = axiom::ecs.get_component<axiom::collider3d>(hit).mass * 30.0f * psystem.physics_step * 2.0f;
+
+                        constraint_dist = length(point - camera_transform.position);
+
+                        constraint_index = psystem.constraints.size();
+                        psystem.constraints.push_back(std::make_unique<axiom::position_constraint>(pc));
+                    }
+                }
+            } else {
+                if(movement_capture == false && raycast_capture == false) {
+                    ui_system.window->disable_cursor();
+                    movement_capture = true;
+                }
             }
-        }
-        else {
-            if (movement_capture) {
-                window.show_cursor();
-                if (cursor_hidden)
-                    window.hide_cursor();
+        } else {
+            if(raycast_capture && constraint_index != 0xFFFFFFFF) {
+                auto& psystem = axiom::ecs.get_system<axiom::physics_system3d>();
+                psystem.constraints.erase(psystem.constraints.begin() + constraint_index);
 
-                movement_capture = false;
+                constraint_index = 0xFFFFFFFF;
             }
+
+            if(movement_capture) ui_system.window->show_cursor();
+            movement_capture = false;
+            raycast_capture = false;
         }
 
-        if (ui_system.hover_capture == widget->self) {
-            if (ui_system.window->scroll_delta != 0.0f) {
+        if(ui_system.hover_capture == self->self) {
+            if(ui_system.window->scroll_delta != 0.0f) {
                 movement_speed *= pow(2, ui_system.window->scroll_delta * 0.5f);
             }
         }
 
-        if (ui_system.click_capture == widget->self) {
-            if (movement_capture) {
+        if(ui_system.click_capture == self->self) {
+            if(movement_capture) {
                 glm::vec3 raw_movement = {0, 0, 0};
                 float rotate_value = 0.0f;
 
@@ -514,42 +645,41 @@ int main(int argc, char **argv) {
                 rotate.x = -ui_system.window->cursor_delta.x;
                 rotate.y = -ui_system.window->cursor_delta.y;
 
-                if (ui_system.window->input_map[axiom::input_code::KEY_Q]) {
+                if(ui_system.window->input_map[axiom::input_code::KEY_Q]) {
                     rotate.z -= 1;
                 }
-                if (ui_system.window->input_map[axiom::input_code::KEY_E]) {
+                if(ui_system.window->input_map[axiom::input_code::KEY_E]) {
                     rotate.z += 1;
                 }
 
                 //
 
-                if (ui_system.window->input_map[axiom::input_code::KEY_A]) {
+                if(ui_system.window->input_map[axiom::input_code::KEY_A]) {
                     raw_movement.x -= 1;
                 }
-                if (ui_system.window->input_map[axiom::input_code::KEY_D]) {
+                if(ui_system.window->input_map[axiom::input_code::KEY_D]) {
                     raw_movement.x += 1;
-                }
-                if (ui_system.window->input_map[axiom::input_code::KEY_S]) {
+                } 
+                if(ui_system.window->input_map[axiom::input_code::KEY_S]) {
                     raw_movement.z += 1;
                 }
-                if (ui_system.window->input_map[axiom::input_code::KEY_W]) {
+                if(ui_system.window->input_map[axiom::input_code::KEY_W]) {
                     raw_movement.z -= 1;
                 }
-                if (ui_system.window->input_map[axiom::input_code::KEY_SPACE]) {
+                if(ui_system.window->input_map[axiom::input_code::KEY_SPACE]) {
                     raw_movement.y += 1;
                 }
-                if (ui_system.window->input_map[axiom::input_code::KEY_LEFT_SHIFT]) {
+                if(ui_system.window->input_map[axiom::input_code::KEY_LEFT_SHIFT]) {
                     raw_movement.y -= 1;
                 }
 
                 //
 
                 float len = length(raw_movement);
-                if (len != 0.0f)
-                    raw_movement = glm::normalize(raw_movement);
-
+                if(len != 0.0f) raw_movement = glm::normalize(raw_movement);
+                
                 glm::vec3 translation_vec = camera_transform.orientation * raw_movement;
-
+                
                 vec3 dir = -camera_transform.orientation[2];
                 vec3 u = camera_transform.orientation[1];
                 glm::mat3 rotate_y_mat = (mat3)glm::rotate(float(2 * axiom::pi * (1.0 / 1024) * rotate.y), glm::normalize(glm::cross(u, dir)));
@@ -558,6 +688,34 @@ int main(int argc, char **argv) {
 
                 camera_transform.orientation = rotate_z_mat * rotate_x_mat * rotate_y_mat * camera_transform.orientation;
                 camera_transform.position += translation_vec * (float)axiom::ecs.delta_time * movement_speed;
+            } else if(raycast_capture && constraint_index != 0xFFFFFFFF) {
+                uint camera = camera_entity;
+                axiom::transform3d& camera_transform = axiom::ecs.get_component<axiom::transform3d>(camera);
+                axiom::camera3d& camera_cam = axiom::ecs.get_component<axiom::camera3d>(camera);
+
+                //
+
+                vec2 screen_pos = (ui_system.window->cursor_pos - self->position) / self->size;
+                screen_pos = screen_pos * 2.0f - 1.0f;
+
+                vec4 vertex = vec4(screen_pos, 0.5f, 1.0f);
+
+                mat4 proj = axiom::get_proj(camera_cam);
+                mat4 inv_proj = glm::inverse(proj);
+
+                vertex = inv_proj * vertex;
+                vertex /= vertex.w;
+
+                vec3 dir = glm::normalize(camera_transform.orientation * vertex.xyz());
+
+                vec3 new_point = camera_transform.position + dir * constraint_dist;
+                
+                //
+
+                auto& psystem = axiom::ecs.get_system<axiom::physics_system3d>();
+
+                axiom::position_constraint* c = dynamic_cast<axiom::position_constraint*>(psystem.constraints[constraint_index].get());
+                c->vb = new_point;
             }
         }
     };
@@ -583,6 +741,132 @@ int main(int argc, char **argv) {
     {
         axiom::screen_widget::insert("Axiom", axiom::color_red, &window);
         axiom::render_widget::insert(rt, 0, widget_callback);
+        //
+
+        ui_system.buffer(vec4(4.0f));
+        axiom::column_widget::insert();
+        axiom::match_widget::insert(vec4(0.35f, 0.35f, 0.35f, 0.35f), true);
+        
+        axiom::text_widget::insert(
+            "", axiom::text_alignment::LEFT, false,
+            [](std::string prev) {
+                static double elapsed_time = 0.0f;
+                static int frames = 0;
+
+                elapsed_time += axiom::ecs.delta_time;
+                ++frames;
+
+                if(elapsed_time > 1.0f) {
+                    float fps = frames / elapsed_time;
+                    frames = 0;
+                    elapsed_time = 0.0;
+
+                    return "FPS: " + axiom::to_base(fps, 10, 3);
+                } else {
+                    return prev;
+                }
+            }
+        );
+        axiom::text_widget::insert(
+            "", axiom::text_alignment::LEFT, false,
+            [camera_entity](std::string prev) {
+                axiom::transform3d& camera_transform = axiom::ecs.get_component<axiom::transform3d>(camera_entity);
+
+                return "position: " + axiom::to_base(camera_transform.position.x, 10, 3) + " " + axiom::to_base(camera_transform.position.y, 10, 3) + " " + axiom::to_base(camera_transform.position.z, 10, 3);
+            }
+        );
+
+        ui_system.input_step();
+
+        //
+
+        ui_system.position(axiom::position_mode::TOP_RIGHT);
+        ui_system.buffer(vec4(6.0f));
+        axiom::column_widget::insert();
+        axiom::row_widget::insert();
+
+        axiom::button_widget::insert(vec2(32.0f), axiom::color_purple, vec4(0, 116, 12, 12), 
+            [](axiom::button_widget& self) {
+                static bool update = true;
+                static bool psym = false;
+
+                auto* physics = &axiom::ecs.get_system<axiom::physics_system3d>();
+                auto& parent_widget = ui_system.widgets[self.parent];
+
+                if(self.pressed || ui_system.window->pressed_buttons.contains(axiom::input_code::KEY_F5)) {
+                    physics->sim_active = !physics->sim_active;
+                    update = true;
+                }
+
+                if(update) {
+                    update = false;
+
+                    if(physics->sim_active) {
+                        auto prev_children = parent_widget->children;
+                        parent_widget->children = {self.self};
+                        for(ulong child : prev_children) {
+                            if(find(parent_widget->children.begin(), parent_widget->children.end(), child) == parent_widget->children.end()) {
+                                ui_system.widgets.erase(child);
+                            }
+                        }
+
+                        self.icon = vec4(0, 116, 12, 12);
+                    } else {
+                        ui_system.input_set(self.parent);
+                        ui_system.buffer(vec4(6.0f));
+
+                        //
+                        
+                        ulong continue_button = axiom::button_widget::insert(vec2(32.0f), axiom::color_purple, vec4(36, 116, 12, 12), 
+                            [physics](axiom::button_widget& self) {
+                                if(self.held) {
+                                    physics->sim_active = true;
+                                } else {
+                                    physics->sim_active = false;
+                                }
+                            }
+                        );
+
+                        parent_widget->children.pop_back();
+                        parent_widget->children.insert(parent_widget->children.begin(), continue_button);
+                        
+                        //
+
+                        ulong step_button = axiom::button_widget::insert(vec2(32.0f), axiom::color_purple, vec4(24, 116, 12, 12), 
+                            [physics](axiom::button_widget& self) {
+                                if(self.pressed) {
+                                    physics->physics_loop();
+                                }
+                            }
+                        );
+
+                        parent_widget->children.pop_back();
+                        parent_widget->children.insert(parent_widget->children.begin(), step_button);
+                        
+                        self.icon = vec4(12, 116, 12, 12);
+                    }
+                }
+            }
+        );
+
+        ui_system.input_step();
+
+        axiom::row_widget::insert();
+
+        axiom::button_widget::insert(vec2(32.0f), axiom::color_red, vec4(48, 116, 12, 12), 
+            [](axiom::button_widget& self) {
+                if(self.pressed) {
+                    do_render_grid = !do_render_grid;
+                    if(do_render_grid) self.color = axiom::color_red;
+                    else self.color = axiom::color_red * 0.75f;
+                }
+            }
+        );
+
+        ui_system.input_step(2);
+
+        //
+
         ui_system.input_attach(1);
         ui_system.buffer(vec4(4.0f));
         ui_system.position(axiom::position_mode::CENTER_LEFT);
@@ -651,10 +935,57 @@ int main(int argc, char **argv) {
                                     );
                                     
                                     
-                                    axiom::text_widget::insert("Check?", axiom::text_alignment::LEFT, false);
+                                    axiom::text_widget::insert("Pixel Size", axiom::text_alignment::LEFT, false);
+                                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                                    axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(1.0f, 64.0), 0.0f, 16.0f, "", 
+                                        [](axiom::slider_widget& self) {
+                                            if(self.pressed) {
+                                                axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].base_pixel_size = 1.0f / self.current_value;
+                                            } else {
+                                                self.current_value = 1.0f / axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].base_pixel_size;
+                                            }
+
+                                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                                        }
+                                    );
+                                    
+                                    axiom::text_widget::insert("Cascade Scale", axiom::text_alignment::LEFT, false);
+                                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                                    axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(2.0f, 16.0f), 0.0f, 8.0f, "", 
+                                        [](axiom::slider_widget& self) {
+                                            if(self.pressed) {
+                                                axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].cascade_factor = self.current_value;
+                                            } else {
+                                                self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].cascade_factor;
+                                            }
+
+                                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                                        }
+                                    );
+                                    
+                                    axiom::text_widget::insert("Blend Radius", axiom::text_alignment::LEFT, false);
+                                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                                    axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(0.0f, 3.0f), 0.0f, 1.0f, "", 
+                                        [](axiom::slider_widget& self) {
+                                            if(self.pressed) {
+                                                axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].blend_radius = self.current_value;
+                                            } else {
+                                                self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].blend_radius;
+                                            }
+
+                                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                                        }
+                                    );
+                                    
+                                    axiom::text_widget::insert("Grid", axiom::text_alignment::LEFT, false);
                                     axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
                                     ui_system.position(axiom::position_mode::CENTER);
-                                    axiom::checkbox_widget::insert(vec2(16.0f), axiom::color_red, false);
+                                    axiom::checkbox_widget::insert(vec2(16.0f), axiom::color_red, false, 
+                                        [](axiom::checkbox_widget& self) {
+                                            if(self.checked) do_render_grid = true;
+                                            else do_render_grid = false;
+                                        }
+                                    );
                                 }
                             },
                             {
@@ -673,13 +1004,7 @@ int main(int argc, char **argv) {
 
                                     axiom::text_widget::insert(lipsum, axiom::text_alignment::LEFT);
                                 }
-                            },
-                            {"node_c"},
-                            {"node_d"},
-                            {"node_e"},
-                            {"node_f"},
-                            {"node_g"},
-                            {"node_h"},
+                            }
                         }
                     };
 

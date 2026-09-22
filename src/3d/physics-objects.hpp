@@ -37,7 +37,7 @@ mat3 random_orientation(axiom::random32& rand);
 
 std::vector<axiom::shape_face> get_faces(std::vector<axiom::vertex_element3d>& elements);
 void create_collider(axiom::collider3d& collider, axiom::transform3d& transform, std::vector<axiom::vertex_element3d>& elements, float mass = 1.0f, bool is_static = false);
-void create_mesh(axiom::color_mesh3d& mesh, std::vector<axiom::vertex_element3d>& elements, vec3 color);
+void create_mesh(axiom::color_mesh3d& mesh, std::vector<axiom::vertex_element3d>& elements, vec3 color, bool blend_normals = false);
 void create_mesh(axiom::color_mesh3d& mesh, std::vector<std::vector<axiom::vertex_element3d>>& elements, vec3 color);
 void create_collider(axiom::collider3d& collider, axiom::transform3d& transform, std::vector<std::vector<axiom::vertex_element3d>>& elements, std::vector<float> masses, bool is_static = false);
 
@@ -47,3 +47,4 @@ void create_tetrahedron(vec3 position, mat3 orientation, float diameter, vec3 co
 void create_bipyramid(vec3 position, mat3 orientation, float diameter, int num_vertices, vec3 color, float mass = 1.0f);
 void create_dodecahedron(vec3 position, mat3 orientation, float diameter, vec3 color, float mass = 1.0f);
 void create_icosahedron(vec3 position, mat3 orientation, float diameter, vec3 color, float mass = 1.0f);
+void create_capsule(vec3 position, mat3 orientation, vec2 dimensions, ivec2 vertex_density, vec3 color, float mass = 1.0f);

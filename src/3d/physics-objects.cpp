@@ -771,7 +771,7 @@ std::vector<axiom::shape_face> get_faces(std::vector<axiom::vertex_element3d>& e
             axiom::shape_face face_i = faces[i];
             axiom::shape_face face_j = faces[j];
 
-            if(dot(face_i.normal, face_j.normal) > 0.98f) {
+            if(dot(face_i.normal, face_j.normal) > 0.999f) {
                 std::vector<uint> new_i;
                 std::set_union(face_i.vertices.begin(), face_i.vertices.end(), face_j.vertices.begin(), face_j.vertices.end(), std::back_inserter(new_i));
 
@@ -832,7 +832,7 @@ void create_collider(axiom::collider3d& collider, axiom::transform3d& transform,
     if(collider.shapes[0].elements.size() >= 3) collider.shapes[0].faces = get_faces(collider.shapes[0].elements);
 };
 
-void create_mesh(axiom::color_mesh3d& mesh, std::vector<axiom::vertex_element3d>& elements, vec3 color) {
+void create_mesh(axiom::color_mesh3d& mesh, std::vector<axiom::vertex_element3d>& elements, vec3 color, bool blend_normals) {
     std::vector<axiom::output_vertex> surface_vertices;
     std::vector<uint> surface_indices;
     axiom::create_mesh(elements, &surface_vertices, &surface_indices);
@@ -886,6 +886,8 @@ void create_mesh(axiom::color_mesh3d& mesh, std::vector<axiom::vertex_element3d>
         if(len != 0.0f) normal /= len;
     }
 
+    std::vector<vec3> blend_norm(elements.size(), vec3(0.0f));
+
     for(uint i = 0; i < surface_indices.size(); i += 3) {
         uint i0 = surface_indices[i];
         uint i1 = surface_indices[i + 1];
@@ -904,9 +906,9 @@ void create_mesh(axiom::color_mesh3d& mesh, std::vector<axiom::vertex_element3d>
         axiom::color_vertex3d vertex;
         vertex.color = vec4(color, 1.0);
 
-        vec3 n0 = normals[i0];
-        vec3 n1 = normals[i1];
-        vec3 n2 = normals[i2];
+        vec3 n0 = normals[v0.element];
+        vec3 n1 = normals[v1.element];
+        vec3 n2 = normals[v2.element];
 
         bool o0 = length(n0) == 0.0f;
         bool o1 = length(n1) == 0.0f;
@@ -919,6 +921,10 @@ void create_mesh(axiom::color_mesh3d& mesh, std::vector<axiom::vertex_element3d>
             if(o1) n1 = normal;
             if(o2) n2 = normal;
         }
+        
+        blend_norm[v0.element] += n0;
+        blend_norm[v1.element] += n1;
+        blend_norm[v2.element] += n2;
 
         vertex.position = v0.position;
         vertex.normal = n0;
@@ -932,6 +938,22 @@ void create_mesh(axiom::color_mesh3d& mesh, std::vector<axiom::vertex_element3d>
         vertex.normal = n2;
         mesh.vs.push_back(vertex);
     };
+    
+    if(blend_normals) {
+        for(uint i = 0; i < surface_indices.size(); i += 3) {
+            uint i0 = surface_indices[i];
+            uint i1 = surface_indices[i + 1];
+            uint i2 = surface_indices[i + 2];
+            
+            axiom::output_vertex v0 = surface_vertices[i0];
+            axiom::output_vertex v1 = surface_vertices[i1];
+            axiom::output_vertex v2 = surface_vertices[i2];
+
+            mesh.vs[i].normal = normalize(blend_norm[v0.element]);
+            mesh.vs[i + 1].normal = normalize(blend_norm[v1.element]);
+            mesh.vs[i + 2].normal = normalize(blend_norm[v2.element]);
+        }
+    }
     
     mesh.load();
 };
@@ -1252,6 +1274,46 @@ void create_icosahedron(vec3 position, mat3 orientation, float diameter, vec3 co
     transform.orientation = orientation;
 
     create_mesh(mesh, elements, color);
+    create_collider(collider, transform, elements, mass, mass == 0.0f);
+    
+    uint entity = axiom::ecs.insert_entity();
+    axiom::ecs.insert_component(entity, transform);
+    axiom::ecs.insert_component(entity, mesh);
+    axiom::ecs.insert_component(entity, collider);
+}
+
+void create_capsule(vec3 position, mat3 orientation, vec2 dimensions, ivec2 vertex_density, vec3 color, float mass = 1.0f) {
+    axiom::transform3d transform;
+    axiom::color_mesh3d mesh;
+    axiom::collider3d collider;
+
+    std::vector<vec3> vs;
+
+    float offset = (dimensions.y - dimensions.x) * 0.5f;
+
+    for(int j = 0; j < vertex_density.y + 1; ++j) {
+        float fr = float(j) / (vertex_density.y);
+
+        float num_vertices = floor(glm::mix(float(vertex_density.x), 1.0f, fr));
+
+        float vangle = fr * 0.5 * axiom::pi;
+        vec2 rotv = vec2(cos(vangle), sin(vangle));
+
+        for(int i = 0; i < num_vertices; ++i) {
+            float angle = float(i) / num_vertices * 2.0f * axiom::pi;
+
+            vs.push_back(vec3(cos(angle) * rotv.x * dimensions.x * 0.5f, sin(angle) * rotv.x * dimensions.x * 0.5f, rotv.y * dimensions.x * 0.5f + offset));
+            vs.push_back(-vec3(cos(angle) * rotv.x * dimensions.x * 0.5f, sin(angle) * rotv.x * dimensions.x * 0.5f, rotv.y * dimensions.x * 0.5f + offset));
+        }
+    }
+
+    std::vector<axiom::vertex_element3d> elements;
+    for(vec3 v : vs) elements.push_back(axiom::vertex_element3d{v});
+
+    transform.position = position;
+    transform.orientation = orientation;
+
+    create_mesh(mesh, elements, color, true);
     create_collider(collider, transform, elements, mass, mass == 0.0f);
     
     uint entity = axiom::ecs.insert_entity();
