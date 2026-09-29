@@ -111,7 +111,7 @@ auto base_render = [](uint camera_entity, axiom::framebuffer& framebuffer) {
 
         origins.push_back(transform.position);
         textures.push_back(vec4(3, 0, 5, 5));
-        colors.push_back(vec4(1.0f));
+        colors.push_back(mesh.border[0].color);
         sizes.push_back(vec2(5, 5));
 
         //
@@ -151,9 +151,9 @@ auto base_render = [](uint camera_entity, axiom::framebuffer& framebuffer) {
             sizes.push_back(vec2(5, 5));
         }
     }
+    */
 
     render_billboards(camera_entity, origins, textures, colors, sizes, framebuffer.size, axiom::get_texture("ui"));
-    */
 };
 
 void render_grid(uint camera_entity, axiom::framebuffer& framebuffer) {
@@ -187,7 +187,85 @@ void render_grid(uint camera_entity, axiom::framebuffer& framebuffer) {
     vertices.draw_vertices_triangles();
 }
 
-void create_square(vec2 size, vec2 position, mat2 orientation, vec3 color, float mass) {
+
+uint create_capsule(vec2 size, uint num_vertices, vec2 position, mat2 orientation, vec3 color, float mass) {
+    std::vector<axiom::vertex_element2d> elements;
+
+    for(int i = 0; i < num_vertices; ++i) {
+        float angle = float(i) / (num_vertices - 1) * axiom::pi;
+
+        vec2 pos = vec2(cos(angle), sin(angle));
+
+        vec2 pa = pos * size.x + vec2(0.0f, size.y * 0.5f - size.x);
+        vec2 pb = -pos * size.x - vec2(0.0f, size.y * 0.5f - size.x);
+
+        elements.push_back(axiom::vertex_element2d(pa));
+        elements.push_back(axiom::vertex_element2d(pb));
+    }
+
+    //
+
+    axiom::transform2d transform = {
+        position, orientation
+    };
+
+    uint entity = axiom::ecs.insert_entity();
+    axiom::collider2d collider;
+    axiom::collision_shape2d shape;
+    shape.mass = mass;
+
+    shape.vertices = elements;
+    axiom::create_faces(shape);
+
+    collider.shapes = {
+        shape   
+    };
+
+    std::vector<vec2> border;
+    std::vector<vec2> area;
+
+    vec2 v = axiom::physics_system2d::calculate_inertia(collider);
+    transform.position += transform.orientation * v;
+    axiom::create_mesh(collider, &border, &area);
+
+    axiom::color_mesh2d mesh;
+
+    for(vec2 v : border) {
+        axiom::color_vertex2d vv;
+        vv.position = v;
+        vv.color = vec4(color, 1.0f);
+
+        mesh.border.push_back(vv);
+    }
+    
+    for(vec2 v : area) {
+        axiom::color_vertex2d vv;
+        vv.position = v;
+        vv.color = vec4(color, 0.25f);
+
+        mesh.area.push_back(vv);
+    }
+
+    mesh.v_lines = std::shared_ptr<axiom::vertices>(new axiom::vertices);
+    mesh.v_lines->init();
+    mesh.v_lines->vertex_buffer_data(mesh.border.data(), mesh.border.size(), sizeof(axiom::color_vertex2d), GL_STATIC_DRAW);
+    mesh.v_lines->add_vertex_attribute(0, 2, GL_FLOAT, false, sizeof(axiom::color_vertex2d), 0);
+    mesh.v_lines->add_vertex_attribute(1, 4, GL_FLOAT, false, sizeof(axiom::color_vertex2d), sizeof(float) * 2);
+    
+    mesh.v_tris = std::shared_ptr<axiom::vertices>(new axiom::vertices);
+    mesh.v_tris->init();
+    mesh.v_tris->vertex_buffer_data(mesh.area.data(), mesh.area.size(), sizeof(axiom::color_vertex2d), GL_STATIC_DRAW);
+    mesh.v_tris->add_vertex_attribute(0, 2, GL_FLOAT, false, sizeof(axiom::color_vertex2d), 0);
+    mesh.v_tris->add_vertex_attribute(1, 4, GL_FLOAT, false, sizeof(axiom::color_vertex2d), sizeof(float) * 2);
+
+    axiom::ecs.insert_component(entity, transform);
+    axiom::ecs.insert_component(entity, collider);
+    axiom::ecs.insert_component(entity, mesh);
+
+    return entity;
+}
+
+uint create_square(vec2 size, vec2 position, mat2 orientation, vec3 color, float mass) {
     std::vector<axiom::vertex_element2d> elements = {
         axiom::vertex_element2d{vec2(-1.0f, -1.0f) * size * 0.5f},
         axiom::vertex_element2d{vec2(1.0f, -1.0f) * size * 0.5f},
@@ -251,6 +329,8 @@ void create_square(vec2 size, vec2 position, mat2 orientation, vec3 color, float
     axiom::ecs.insert_component(entity, transform);
     axiom::ecs.insert_component(entity, collider);
     axiom::ecs.insert_component(entity, mesh);
+
+    return entity;
 }
 
 void create_polygon(float rad, int num_vertices, vec2 position, mat2 orientation, vec3 color, float mass) {
@@ -332,8 +412,9 @@ int main(int argc, char **argv) {
     axiom::render_system& render_system = axiom::ecs.get_system<axiom::render_system>();
     render_system.targets.reserve(5);
 
-    axiom::ttf_font font = axiom::process_ttf("res/JetBrainsMono-Regular.ttf");
-    axiom::ecs.get_system<axiom::ui_system>().fonts.push_back(std::move(font));
+    axiom::physics_system2d& physics_system = axiom::ecs.get_system<axiom::physics_system2d>();
+
+    //axiom::ecs.get_system<axiom::ui_system>().font_handler.process_ttf("res/Oxanium-Medium.ttf", "test");
 
     // create collectors
     axiom::signature sig;
@@ -362,16 +443,16 @@ int main(int argc, char **argv) {
 
     // create target callback and pass in camera
 
-    axiom::random32 rand(0xFF8);
+    axiom::random32 rand(0xFF1);
 
     float angle = rand();
     mat2 ori = mat2{
         cos(angle), -sin(angle),
         sin(angle), cos(angle)
     };
-    ivec2 num_squares = {48, 48};
+    ivec2 num_squares = {32, 32};
     vec2 size = vec2(0.5f);
-    vec2 center_pos = vec2(0.0f, 32.0f);
+    vec2 center_pos = vec2(0.0f, 36.0f);
     vec2 sep = size + 0.125f;
 
     create_square(vec2(128.0f, 0.5f), vec2(0.0f, 0.25f), glm::identity<mat2>(), vec3(1.0f), 0.0f);
@@ -403,6 +484,37 @@ int main(int argc, char **argv) {
 
             //create_square(size, pos, ori, vec3(1.0f), 1.0f);
         }
+    }
+
+    uint prev = 0.0f;
+    uint prev_e = 0;
+
+    for(int i = 0; i < 16; ++i) {
+        uint e = create_capsule(vec2(0.125f, 1.25f), 8, vec2(32.0f, 4.0f) + ori * vec2(0.0f, i), ori, axiom::hsv_color(rand() * 0.125f + 2.25f, 0.65f, 1.0f), 1.0f);
+
+        if(i != 0) {
+            auto& collider = axiom::ecs.get_component<axiom::collider2d>(e);
+            auto& prev_collider = axiom::ecs.get_component<axiom::collider2d>(prev_e);
+
+            collider.non_colliding.emplace(e);
+            collider.non_colliding.emplace(prev_e);
+
+            axiom::constraint2d cc;
+            cc.a = prev_e;
+            cc.b = e;
+
+            axiom::pos_constraint pc;
+            pc.a = vec2(0.0f, 0.5f);
+            pc.b = vec2(0.0f, -0.5f);
+            pc.vs = {vec2(1, 0), vec2(0, 1)};
+            pc.is_hold = true;
+
+            cc.pos.push_back(pc);
+
+            physics_system.constraints.push_back(cc);
+        }
+
+        prev_e = e;
     }
 
 
@@ -579,6 +691,7 @@ int main(int argc, char **argv) {
                 }
             }
         );
+
         axiom::text_widget::insert(
             "", axiom::text_alignment::LEFT, false,
             [camera_entity](std::string prev) {
@@ -678,12 +791,61 @@ int main(int argc, char **argv) {
                                 "Settings", 
                                 {},
                                 []() {
-                                    std::string lipsum = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed pulvinar sit amet urna eget commodo. Morbi pulvinar ac mauris ut tempus. Mauris aliquet ultrices nulla. In feugiat rutrum pulvinar. Nulla dictum nisl nec auctor venenatis. Etiam vel pretium metus, quis auctor tortor. Quisque quam metus, scelerisque id sagittis ac, iaculis vitae leo. Sed dapibus purus dolor, et vestibulum velit sagittis et. Aliquam vel gravida lectus, eget viverra velit. Cras bibendum, risus in bibendum volutpat, tortor dui cursus augue, quis vulputate ante nibh a ante. Nam varius arcu ac felis vestibulum suscipit. Aliquam mauris justo, placerat sit amet tincidunt eu, auctor eu nunc. Donec suscipit arcu et risus sagittis porttitor. Praesent tellus mauris, semper quis dictum sit amet, tristique in nisl. Aenean nec metus feugiat neque porttitor vulputate vel vitae sem.\nQuisque vulputate imperdiet magna ac porttitor. Vivamus eget neque sed purus tempor placerat pharetra vitae felis. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Nullam dui justo, tempus ut neque sed, finibus vestibulum eros. Morbi egestas risus non justo rhoncus blandit. Nulla facilisis a lacus vitae rutrum. Praesent facilisis ligula et lacus semper tincidunt. Mauris at urna justo. Vivamus ornare molestie turpis vulputate auctor.\nSuspendisse pellentesque, urna consectetur suscipit dapibus, leo felis scelerisque sapien, nec elementum risus risus ac ipsum. Cras interdum massa neque. In lacinia volutpat ex at pretium. Pellentesque eleifend eu elit eu fermentum. Ut eros erat, viverra vel feugiat vitae, pulvinar id dui. Sed mattis lorem ac sapien eleifend, vitae finibus turpis suscipit. Mauris viverra nunc non eros efficitur, non efficitur odio porttitor. Aenean sed eros vitae tortor hendrerit pretium at a tellus. Nulla vel accumsan justo. Etiam dignissim ac justo nec pharetra. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Aliquam maximus aliquam tempus. Aenean et dui ullamcorper, consectetur arcu non, condimentum est. Vivamus in neque sit amet dolor feugiat sollicitudin at quis felis. In hac habitasse platea dictumst.";
+                                    ivec2 size = uvec2(500, 200);
+                                    ivec2 pos = (ui_system.window->size - size) / 2;
 
                                     ui_system.input_reset();
                                     ui_system.position(axiom::position_mode::TOP_LEFT);
-                                    axiom::window_widget::insert("Axiom", ivec2(200, 200), ivec2(400, 100), axiom::color_red);
+                                    axiom::window_widget::insert("Settings", size, pos, axiom::color_red);
                                     axiom::panel_widget::insert();
+                                    axiom::scroll_widget::insert(6.0f, true);
+                                    ui_system.buffer(vec4(6.0f));
+
+                                    axiom::grid_widget::insert(3);
+                                    ui_system.position(axiom::position_mode::CENTER_LEFT);
+
+                                    axiom::text_widget::insert("Substeps Per Frame", axiom::text_alignment::LEFT, false);
+                                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                                    axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(1, 32), 1.0f, 0.0f, "", 
+                                        [](axiom::slider_widget& self) {
+                                            if(self.pressed) {
+                                                axiom::ecs.get_system<axiom::physics_system2d>().substeps = self.current_value;
+                                            } else {
+                                                self.current_value = axiom::ecs.get_system<axiom::physics_system2d>().substeps;
+                                            }
+                                            
+                                            self.text[0]->string = axiom::to_base(int64_t(self.current_value), 10);
+                                        }
+                                    );
+
+                                    axiom::text_widget::insert("Iterations Per Substep", axiom::text_alignment::LEFT, false);
+                                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                                    axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(1, 32), 1.0f, 0.0f, "", 
+                                        [](axiom::slider_widget& self) {
+                                            if(self.pressed) {
+                                                axiom::ecs.get_system<axiom::physics_system2d>().iterations = self.current_value;
+                                            } else {
+                                                self.current_value = axiom::ecs.get_system<axiom::physics_system2d>().iterations;
+                                            }
+                                            
+                                            self.text[0]->string = axiom::to_base(int64_t(self.current_value), 10);
+                                        }
+                                    );
+                                    
+                                    axiom::text_widget::insert("Physics FPS", axiom::text_alignment::LEFT, false);
+                                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                                    axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(8, 128), 0.0f, 0.0f, "", 
+                                        [](axiom::slider_widget& self) {
+                                            if(self.pressed) {
+                                                axiom::ecs.get_system<axiom::physics_system2d>().fps = self.current_value;
+                                            } else {
+                                                self.current_value = axiom::ecs.get_system<axiom::physics_system2d>().fps;
+                                            }
+                                            
+                                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                                        }
+                                    );
+
                                     /*
                                     axiom::scroll_widget::insert(6.0f, true);
                                     ui_system.buffer(vec4(6.0f));
@@ -864,7 +1026,7 @@ int main(int argc, char **argv) {
 
         axiom::get_shader("ui").use();
 
-        ui_system.fonts[0].texture.bind(0);
+        ui_system.font_handler.texture.bind(0);
         axiom::get_texture("ui").bind(1);
         for(int i = 0; i < ui_system.target_textures.size(); ++i) {
             ui_system.target_textures[i]->bind(i + 2);

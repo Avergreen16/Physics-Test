@@ -25,3 +25,9 @@
 [submodule "external/json"]
 	path = external/json
 	url = https://github.com/nlohmann/json.git
+[submodule "external/freetype"]
+	path = external/freetype
+	url = https://github.com/freetype/freetype
+[submodule "external/harfbuzz"]
+	path = external/harfbuzz
+	url = https://github.com/harfbuzz/harfbuzz

@@ -20,6 +20,8 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/wrappers/lua)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glfw)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glad)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glm)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/freetype)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/harfbuzz)
 
 set(AXIOM_INCLUDE_RENDER ON)
 set(AXIOM_INCLUDE_UI ON)
@@ -40,8 +42,10 @@ add_executable(example-3d
 
 target_include_directories(example-3d PUBLIC 
     ${CMAKE_SOURCE_DIR}/external/axiom
-
     ${CMAKE_SOURCE_DIR}/external/lua
+    ${CMAKE_SOURCE_DIR}/external/freetype/include
+    ${CMAKE_SOURCE_DIR}/external/harfbuzz/src
+
     ${CMAKE_SOURCE_DIR}/src
 )
 
@@ -50,6 +54,8 @@ set_target_properties(example-3d PROPERTIES OUTPUT_NAME "example-3d")
 target_link_libraries(example-3d PRIVATE
     Axiom
     lua
+    freetype
+    harfbuzz
 )
 
 target_compile_options(example-3d PRIVATE

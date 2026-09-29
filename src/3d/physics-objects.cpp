@@ -1282,7 +1282,7 @@ void create_icosahedron(vec3 position, mat3 orientation, float diameter, vec3 co
     axiom::ecs.insert_component(entity, collider);
 }
 
-void create_capsule(vec3 position, mat3 orientation, vec2 dimensions, ivec2 vertex_density, vec3 color, float mass = 1.0f) {
+uint create_capsule(vec3 position, mat3 orientation, vec2 dimensions, ivec2 vertex_density, vec3 color, float mass = 2.0f) {
     axiom::transform3d transform;
     axiom::color_mesh3d mesh;
     axiom::collider3d collider;
@@ -1320,4 +1320,6 @@ void create_capsule(vec3 position, mat3 orientation, vec2 dimensions, ivec2 vert
     axiom::ecs.insert_component(entity, transform);
     axiom::ecs.insert_component(entity, mesh);
     axiom::ecs.insert_component(entity, collider);
+
+    return entity;
 }
