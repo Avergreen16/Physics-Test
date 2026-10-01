@@ -190,7 +190,7 @@ void render_lines(uint camera, std::vector<vec3> points, std::vector<vec4> color
 }
 
 auto base_render = [](uint camera_entity, axiom::framebuffer& framebuffer) {
-    static auto stars = create_stars(5000);
+    static auto stars = create_stars(3000);
     
     axiom::transform3d& camera_transform = axiom::ecs.get_component<axiom::transform3d>(camera_entity);
     axiom::camera3d& camera = axiom::ecs.get_component<axiom::camera3d>(camera_entity);
@@ -698,7 +698,7 @@ int main(int argc, char **argv) {
         .num_chunks = 8,
         .num_tiles = 16
     };
-    make_world(params);
+    //make_world(params);
 
     // create target callback and pass in camera
 
@@ -912,7 +912,7 @@ int main(int argc, char **argv) {
         attachment, {}
     );
     
-    axiom::shadow_renderer::create(5, 8.0f, 1.0f / 16.0f, 2048, camera_entity, rt, shadow_func);
+    axiom::shadow_renderer::create(3, 8.0f, 1.0f / 16.0f, 2048, camera_entity, rt, shadow_func);
     
     static axiom::ui_system& ui_system = axiom::ecs.get_system<axiom::ui_system>(); 
     

@@ -402,7 +402,7 @@ void create_polygon(float rad, int num_vertices, vec2 position, mat2 orientation
 }
 
 int main(int argc, char **argv) {
-    axiom::window window(ivec2(256), ivec2(512), 0, "Axiom", false);
+    axiom::window window(ivec2(256), ivec2(1000, 500), 0, "Axiom", false);
 
     axiom::ui_init(&window);
     axiom::render_init(&window);
@@ -450,7 +450,7 @@ int main(int argc, char **argv) {
         cos(angle), -sin(angle),
         sin(angle), cos(angle)
     };
-    ivec2 num_squares = {32, 32};
+    ivec2 num_squares = {0, 0};
     vec2 size = vec2(0.5f);
     vec2 center_pos = vec2(0.0f, 36.0f);
     vec2 sep = size + 0.125f;
@@ -685,7 +685,7 @@ int main(int argc, char **argv) {
                     frames = 0;
                     elapsed_time = 0.0;
 
-                    return "FPS: " + axiom::to_base(fps, 10, 3);
+                    return std::string("FPS: ") + axiom::to_base(fps, 10, 3);
                 } else {
                     return prev;
                 }
