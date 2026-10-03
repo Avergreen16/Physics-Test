@@ -450,9 +450,9 @@ int main(int argc, char **argv) {
         cos(angle), -sin(angle),
         sin(angle), cos(angle)
     };
-    ivec2 num_squares = {0, 0};
+    ivec2 num_squares = {16, 16};
     vec2 size = vec2(0.5f);
-    vec2 center_pos = vec2(0.0f, 36.0f);
+    vec2 center_pos = vec2(0.0f, 12.0f);
     vec2 sep = size + 0.125f;
 
     create_square(vec2(128.0f, 0.5f), vec2(0.0f, 0.25f), glm::identity<mat2>(), vec3(1.0f), 0.0f);
@@ -485,27 +485,26 @@ int main(int argc, char **argv) {
             //create_square(size, pos, ori, vec3(1.0f), 1.0f);
         }
     }
+    uint e = create_capsule(vec2(0.25f, 16.0f), 8, vec2(-32.0f, 16.0f), ori, axiom::hsv_color(rand() * 0.125f + 5.0f, 0.65f, 1.0f), 1.0f);
 
     uint prev = 0.0f;
-    uint prev_e = 0;
+    std::vector<uint> prevs;
 
     for(int i = 0; i < 16; ++i) {
-        uint e = create_capsule(vec2(0.125f, 1.25f), 8, vec2(32.0f, 4.0f) + ori * vec2(0.0f, i), ori, axiom::hsv_color(rand() * 0.125f + 2.25f, 0.65f, 1.0f), 1.0f);
+        uint e = create_capsule(vec2(0.125f, 1.0f), 8, vec2(32.0f, 4.0f) + ori * vec2(0.0f, i), ori, axiom::hsv_color(rand() * 0.125f + 2.25f, 0.65f, 1.0f), 1.0f);
 
         if(i != 0) {
             auto& collider = axiom::ecs.get_component<axiom::collider2d>(e);
-            auto& prev_collider = axiom::ecs.get_component<axiom::collider2d>(prev_e);
 
-            collider.non_colliding.emplace(e);
-            collider.non_colliding.emplace(prev_e);
+            //collider.non_colliding.insert(prevs.begin(), prevs.end());
 
             axiom::constraint2d cc;
-            cc.a = prev_e;
+            cc.a = prevs.back();
             cc.b = e;
 
             axiom::pos_constraint pc;
-            pc.a = vec2(0.0f, 0.5f);
-            pc.b = vec2(0.0f, -0.5f);
+            pc.a = vec2(0.0f, 0.6f);
+            pc.b = vec2(0.0f, -0.6f);
             pc.vs = {vec2(1, 0), vec2(0, 1)};
             pc.is_hold = true;
 
@@ -514,7 +513,7 @@ int main(int argc, char **argv) {
             physics_system.constraints.push_back(cc);
         }
 
-        prev_e = e;
+        prevs.push_back(e);
     }
 
 
@@ -669,7 +668,7 @@ int main(int argc, char **argv) {
 
         ui_system.buffer(vec4(4.0f));
         axiom::column_widget::insert();
-        axiom::match_widget::insert(vec4(0.35f, 0.35f, 0.35f, 0.35f), true);
+        //axiom::match_widget::insert(vec4(0.35f, 0.35f, 0.35f, 0.35f), true);
         
         axiom::text_widget::insert(
             "", axiom::text_alignment::LEFT, false,
