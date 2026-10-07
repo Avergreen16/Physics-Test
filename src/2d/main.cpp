@@ -490,7 +490,7 @@ int main(int argc, char **argv) {
     uint prev = 0.0f;
     std::vector<uint> prevs;
 
-    for(int i = 0; i < 16; ++i) {
+    for(int i = 0; i < 12; ++i) {
         uint e = create_capsule(vec2(0.125f, 1.0f), 8, vec2(32.0f, 4.0f) + ori * vec2(0.0f, i), ori, axiom::hsv_color(rand() * 0.125f + 2.25f, 0.65f, 1.0f), 1.0f);
 
         if(i != 0) {

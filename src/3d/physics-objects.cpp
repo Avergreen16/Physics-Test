@@ -158,7 +158,7 @@ void make_world(world_params params) {
     // blue moon
     populations.clear();
     populations.push_back({0.025f, 0.085f, 5.0f, 125, 0});
-    populations.push_back({0.005f, 0.025f, 25.0f, 50000, 500});
+    populations.push_back({0.005f, 0.025f, 25.0f, 50000, 200});
     std::vector<vec3> colors = {
         axiom::hsv_color(5.85, 0.4, 0.15),
         axiom::hsv_color(5.85, 0.4, 0.125),
@@ -172,7 +172,7 @@ void make_world(world_params params) {
         */
     };
 
-    uint seed = 0xB3;
+    uint seed = 0xB1;
     vec3 position = params.position;
     mat3 orientation = glm::identity<mat3>();
     vec3 dimensions = params.radii;
@@ -329,7 +329,7 @@ void create_planet(uint seed, vec3 position, mat3 orientation, vec3 dimensions, 
         vec3 forward = vec3(1, 0, 0);
         float d = glm::smoothstep(0.0f, 1.0f, dot(normalize(pos), forward));
 
-        return 1.5 * n0 - 1.0f * d + 1.0f;
+        return 1.5 * n0 - 1.06f * d + 1.05f;
     };
 
     auto get_noise = [&](vec3 pos, float seed, float amplitude, int num_craters) {

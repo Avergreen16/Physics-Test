@@ -5,6 +5,8 @@
 
 #include "physics-objects.hpp"
 
+bool debug_mode = false;
+
 struct star {
     vec3 dir;
     vec3 color;
@@ -77,7 +79,7 @@ void render_billboards(uint camera, std::vector<vec3> origins, std::vector<vec4>
         vs = {vs[0], vs[1], vs[3], vs[0], vs[3], vs[2]};
 
         for(auto& v : vs) {
-            v.position = vvv + transpose(mat3(view)) * (v.position * vec3(size, 1.0f));
+            v.position = vvv + transpose(mat3(view)) * (v.position * vec3(size, 1.0f) + vec3(vec2(int(sizes[i].x) % 2, int(sizes[i].x) % 2) / vec2(framebuffer_size), 0.0f));
 
             v.texture = v.texture * tex_range.zw() + tex_range.xy();
         }
@@ -600,10 +602,15 @@ int main(int argc, char **argv) {
     axiom::update_signature<axiom::texture_range_mesh3d>(sig);
     col = axiom::collector(sig);
     axiom::ecs.create_collector("texture_range_mesh3d", col);
+    
+    sig = axiom::update_signature<axiom::collider3d>();
+    axiom::update_signature<axiom::transform3d>(sig);
+    col = axiom::collector(sig);
+    axiom::ecs.create_collector("collider3d", col);
 
     //
 
-    create_cuboid(vec3(0.0f), glm::identity<mat3>(), vec3(32.0f, 32.0f, 0.5f), vec3(0.75f, 0.75f, 0.75f), 0.0f);
+    create_cuboid(vec3(0.0f), glm::identity<mat3>(), vec3(256.0f, 256.0f, 4.0f), vec3(0.75f, 0.75f, 0.75f), 0.0f);
 
     //
     
@@ -614,8 +621,8 @@ int main(int argc, char **argv) {
     uint prev = 0.0f;
     uint prev_e = 0;
     
-    for(int i = 0; i < 10; ++i) {
-        uint e = create_capsule(vec3(0.0f, 40.0f, 12.0f) + ori * vec3(0.0f, 0.0f, 1.125f * i), ori, vec2(0.25f, 1.0f), ivec2(12, 6), axiom::hsv_color(rand() * 0.125f + 2.25f, 0.65f, 1.0f), 2.0f);
+    for(int i = 0; i < 0; ++i) {
+        uint e = create_capsule(vec3(0.0f, 0.0f, 12.0f) + ori * vec3(0.0f, 0.0f, 1.125f * i), ori, vec2(0.25f, 1.0f), ivec2(12, 6), axiom::hsv_color(rand() * 0.125f + 2.25f, 0.65f, 1.0f), 2.0f);
 
         if(i != 0) {
             axiom::position_constraint pc;
@@ -635,7 +642,7 @@ int main(int argc, char **argv) {
     {
         mat3 main_ori = random_orientation(rand);
 
-        ivec3 array = ivec3(8, 8, 8);
+        ivec3 array = ivec3(4, 4, 4);
         vec3 origin = vec3(0.0f, 0.0f, 6.0f);
         float size = axiom::sqrt3 * 0.5f;
         float sep = size;
@@ -719,6 +726,67 @@ int main(int argc, char **argv) {
 
         //render_skybox(camera_entity, target.framebuffer);
         if(do_render_grid) render_grid(camera_entity, target.framebuffer);
+
+        axiom::physics_system3d& physics_system = axiom::ecs.get_system<axiom::physics_system3d>();
+
+        if(debug_mode) {
+            std::vector<vec3> origins;
+            std::vector<vec4> textures;
+            std::vector<vec4> colors;
+            std::vector<vec2> sizes;
+
+            std::vector<vec3> points;
+            std::vector<vec4> pcolors;
+
+            for(uint entity : axiom::ecs.collectors["collider3d"].entities) {
+                axiom::transform3d& transform = axiom::ecs.get_component<axiom::transform3d>(entity);
+                axiom::collider3d& collider = axiom::ecs.get_component<axiom::collider3d>(entity);
+
+                origins.push_back(transform.position);
+                textures.push_back(vec4(3, 0, 5, 5));
+                colors.push_back(vec4(1.0f));
+                sizes.push_back(vec2(5, 5));
+
+                points.push_back(transform.position);
+                pcolors.push_back(vec4(1.0f, 1.0f, 0.0f, 1.0f));
+                glm::vec3 angular_velocity = (transform.orientation * collider.inverse_inertia_tensor * transpose(transform.orientation)) * collider.angular_momentum;
+                
+                points.push_back(transform.position + angular_velocity);
+                pcolors.push_back(vec4(1.0f, 1.0f, 0.0f, 1.0f));
+            }
+
+            for(auto& constraint : physics_system.constraints) {
+                axiom::position_constraint* pconstraint = dynamic_cast<axiom::position_constraint*>(constraint.get());
+                if(pconstraint && pconstraint->b != axiom::NULL_ENTITY) {
+                    origins.push_back(pconstraint->wa);
+                    textures.push_back(vec4(8, 5, 5, 5));
+                    colors.push_back(vec4(1.0f));
+                    sizes.push_back(vec2(5, 5));
+                    
+                    origins.push_back(pconstraint->wb);
+                    textures.push_back(vec4(8, 5, 5, 5));
+                    colors.push_back(vec4(1.0f));
+                    sizes.push_back(vec2(5, 5));
+                    
+                    points.push_back(pconstraint->wa);
+                    pcolors.push_back(vec4(1.0f, 1.0f, 0.0f, 1.0f));
+                    points.push_back(pconstraint->wa + pconstraint->ca->get_velocity(pconstraint->ra));
+                    pcolors.push_back(vec4(1.0f, 1.0f, 0.0f, 1.0f));
+                    
+                    points.push_back(pconstraint->wb);
+                    pcolors.push_back(vec4(1.0f, 1.0f, 0.0f, 1.0f));
+                    points.push_back(pconstraint->wb + pconstraint->cb->get_velocity(pconstraint->rb));
+                    pcolors.push_back(vec4(1.0f, 1.0f, 0.0f, 1.0f));
+                }
+            }
+
+            glDisable(GL_DEPTH_TEST);
+
+            render_billboards(camera_entity, origins, textures, colors, sizes, target.framebuffer.size, axiom::get_texture("ui"));
+            render_lines(camera_entity, points, pcolors);
+
+            glEnable(GL_DEPTH_TEST);
+        }
     };
 
     auto widget_callback = [camera_entity, &window](axiom::render_widget *self) {
@@ -732,8 +800,6 @@ int main(int argc, char **argv) {
         axiom::transform3d& camera_transform = axiom::ecs.get_component<axiom::transform3d>(camera_entity);
         axiom::ui_system& ui_system = axiom::ecs.get_system<axiom::ui_system>();
         auto& psystem = axiom::ecs.get_system<axiom::physics_system3d>();
-
-        if(ui_system.window->pressed_buttons.contains(axiom::input_code::KEY_F5)) psystem.sim_active = !psystem.sim_active;
 
         if(ui_system.click_capture == self->self) {
             if(ui_system.window->input_map[axiom::input_code::KEY_LEFT_CTRL]) {
@@ -1032,13 +1098,23 @@ int main(int argc, char **argv) {
         ui_system.input_step();
 
         axiom::row_widget::insert();
+        
+        axiom::button_widget::insert(vec2(32.0f), axiom::color_green * 0.5f, vec4(96, 54, 14, 10), 
+            [](axiom::button_widget& self) {
+                if(self.pressed) {
+                    debug_mode = !debug_mode;
+                    if(debug_mode) self.color = axiom::color_green;
+                    else self.color = axiom::color_green * 0.5f;
+                }
+            }
+        );
 
         axiom::button_widget::insert(vec2(32.0f), axiom::color_red, vec4(48, 116, 12, 12), 
             [](axiom::button_widget& self) {
                 if(self.pressed) {
                     do_render_grid = !do_render_grid;
                     if(do_render_grid) self.color = axiom::color_red;
-                    else self.color = axiom::color_red * 0.75f;
+                    else self.color = axiom::color_red * 0.5f;
                 }
             }
         );
@@ -1060,9 +1136,12 @@ int main(int argc, char **argv) {
                                 "Settings", 
                                 {},
                                 []() {
+                                    ivec2 size = uvec2(500, 200);
+                                    ivec2 pos = (ui_system.window->size - size) / 2;
+
                                     ui_system.input_reset();
                                     ui_system.position(axiom::position_mode::TOP_LEFT);
-                                    axiom::window_widget::insert("Axiom", ivec2(200, 200), ivec2(400, 100), axiom::color_red);
+                                    axiom::window_widget::insert("Axiom", size, pos, axiom::color_red);
                                     axiom::panel_widget::insert();
                                     ui_system.buffer(vec4(0.0f, 0.0f, 0.0f, 2.0f));
                                     axiom::tab_widget::insert(20, 2, {
@@ -1125,7 +1204,6 @@ int main(int argc, char **argv) {
                                                         self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
                                                     }
                                                 );
-                                                
                                                 
                                                 axiom::text_widget::insert("Pixel Size", axiom::text_alignment::LEFT, false);
                                                 axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
@@ -1248,11 +1326,14 @@ int main(int argc, char **argv) {
                                 "Lipsum", 
                                 {},
                                 []() {
+                                    ivec2 size = uvec2(500, 200);
+                                    ivec2 pos = (ui_system.window->size - size) / 2;
+
                                     std::string lipsum = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed pulvinar sit amet urna eget commodo. Morbi pulvinar ac mauris ut tempus. Mauris aliquet ultrices nulla. In feugiat rutrum pulvinar. Nulla dictum nisl nec auctor venenatis. Etiam vel pretium metus, quis auctor tortor. Quisque quam metus, scelerisque id sagittis ac, iaculis vitae leo. Sed dapibus purus dolor, et vestibulum velit sagittis et. Aliquam vel gravida lectus, eget viverra velit. Cras bibendum, risus in bibendum volutpat, tortor dui cursus augue, quis vulputate ante nibh a ante. Nam varius arcu ac felis vestibulum suscipit. Aliquam mauris justo, placerat sit amet tincidunt eu, auctor eu nunc. Donec suscipit arcu et risus sagittis porttitor. Praesent tellus mauris, semper quis dictum sit amet, tristique in nisl. Aenean nec metus feugiat neque porttitor vulputate vel vitae sem.\nQuisque vulputate imperdiet magna ac porttitor. Vivamus eget neque sed purus tempor placerat pharetra vitae felis. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Nullam dui justo, tempus ut neque sed, finibus vestibulum eros. Morbi egestas risus non justo rhoncus blandit. Nulla facilisis a lacus vitae rutrum. Praesent facilisis ligula et lacus semper tincidunt. Mauris at urna justo. Vivamus ornare molestie turpis vulputate auctor.\nSuspendisse pellentesque, urna consectetur suscipit dapibus, leo felis scelerisque sapien, nec elementum risus risus ac ipsum. Cras interdum massa neque. In lacinia volutpat ex at pretium. Pellentesque eleifend eu elit eu fermentum. Ut eros erat, viverra vel feugiat vitae, pulvinar id dui. Sed mattis lorem ac sapien eleifend, vitae finibus turpis suscipit. Mauris viverra nunc non eros efficitur, non efficitur odio porttitor. Aenean sed eros vitae tortor hendrerit pretium at a tellus. Nulla vel accumsan justo. Etiam dignissim ac justo nec pharetra. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Aliquam maximus aliquam tempus. Aenean et dui ullamcorper, consectetur arcu non, condimentum est. Vivamus in neque sit amet dolor feugiat sollicitudin at quis felis. In hac habitasse platea dictumst.";
 
                                     ui_system.input_reset();
                                     ui_system.position(axiom::position_mode::TOP_LEFT);
-                                    axiom::window_widget::insert("Axiom", ivec2(200, 200), ivec2(400, 100), axiom::color_red);
+                                    axiom::window_widget::insert("Axiom", size, pos, axiom::color_red);
                                     axiom::panel_widget::insert();
                                     axiom::scroll_widget::insert(6.0f, true);
                                     ui_system.buffer(vec4(6.0f));
