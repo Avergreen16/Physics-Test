@@ -22,6 +22,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glad)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glm)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/freetype)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/harfbuzz)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/addie)
 
 set(AXIOM_INCLUDE_RENDER ON)
 set(AXIOM_INCLUDE_UI ON)
@@ -89,6 +90,31 @@ target_link_libraries(example-2d PRIVATE
 )
 
 target_compile_options(example-2d PRIVATE
+    -O3
+    -fpermissive
+    -march=native
+    -static
+    -Wtemplate-body
+    -g
+)
+
+add_executable(addie
+    src/AI/main.cpp
+)
+
+target_include_directories(addie PUBLIC 
+    ${CMAKE_SOURCE_DIR}/external/addie
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/external/stb
+)
+
+set_target_properties(addie PROPERTIES OUTPUT_NAME "addie")
+
+target_link_libraries(addie PRIVATE
+    Addie
+)
+
+target_compile_options(addie PRIVATE
     -O3
     -fpermissive
     -march=native

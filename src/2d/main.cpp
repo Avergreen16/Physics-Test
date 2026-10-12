@@ -401,47 +401,24 @@ void create_polygon(float rad, int num_vertices, vec2 position, mat2 orientation
     axiom::ecs.insert_component(entity, mesh);
 }
 
-int main(int argc, char **argv) {
-    axiom::window window(ivec2(256), ivec2(1000, 500), 0, "Axiom", false);
-
-    axiom::ui_init(&window);
-    axiom::render_init(&window);
-    axiom::physics2d_init();
-    //axiom::physics3d_init();
-
-    axiom::render_system& render_system = axiom::ecs.get_system<axiom::render_system>();
-    render_system.targets.reserve(5);
-
+void clear_scene() {
     axiom::physics_system2d& physics_system = axiom::ecs.get_system<axiom::physics_system2d>();
 
-    //axiom::ecs.get_system<axiom::ui_system>().font_handler.process_ttf("res/Oxanium-Medium.ttf", "test");
+    physics_system.constraints.clear();
 
-    // create collectors
-    axiom::signature sig;
-    axiom::collector col;
+    std::vector<uint> delete_entities;
 
-    sig = axiom::update_signature<axiom::transform2d>();
-    axiom::update_signature<axiom::color_mesh2d>(sig);
-    col = axiom::collector(sig);
-    axiom::ecs.create_collector("color_mesh2d", col);
+    for(uint entity : physics_system.collectors[0].entities) {
+        delete_entities.push_back(entity);
+    }
 
-    //
+    for(uint e : delete_entities) {
+        axiom::ecs.erase_entity(e);
+    }
+}
 
-    // create and initialize camera
-    uint camera_entity = axiom::ecs.insert_entity();
-
-    axiom::camera2d cam;
-    cam.aspect = vec2(1.0f, 1.0f);
-    cam.zoom = 1.0f;
-
-    axiom::transform2d transform;
-    transform.position = vec2(0.0f, 0.0f);
-    transform.orientation = glm::identity<mat2>();
-
-    axiom::ecs.insert_component(camera_entity, cam);
-    axiom::ecs.insert_component(camera_entity, transform);
-
-    // create target callback and pass in camera
+void set_scene() {
+    axiom::physics_system2d& physics_system = axiom::ecs.get_system<axiom::physics_system2d>();
 
     axiom::random32 rand(0xFF1);
 
@@ -450,7 +427,7 @@ int main(int argc, char **argv) {
         cos(angle), -sin(angle),
         sin(angle), cos(angle)
     };
-    ivec2 num_squares = {16, 16};
+    ivec2 num_squares = {0, 0};
     vec2 size = vec2(0.5f);
     vec2 center_pos = vec2(0.0f, 12.0f);
     vec2 sep = size + 0.125f;
@@ -485,13 +462,13 @@ int main(int argc, char **argv) {
             //create_square(size, pos, ori, vec3(1.0f), 1.0f);
         }
     }
-    uint e = create_capsule(vec2(0.25f, 16.0f), 8, vec2(-32.0f, 16.0f), ori, axiom::hsv_color(rand() * 0.125f + 5.0f, 0.65f, 1.0f), 1.0f);
-
+    //uint e = create_capsule(vec2(0.25f, 16.0f), 8, vec2(-32.0f, 16.0f), ori, axiom::hsv_color(rand() * 0.125f + 5.0f, 0.65f, 1.0f), 1.0f);
+    
     uint prev = 0.0f;
     std::vector<uint> prevs;
 
     for(int i = 0; i < 12; ++i) {
-        uint e = create_capsule(vec2(0.125f, 1.0f), 8, vec2(32.0f, 4.0f) + ori * vec2(0.0f, i), ori, axiom::hsv_color(rand() * 0.125f + 2.25f, 0.65f, 1.0f), 1.0f);
+        uint e = create_capsule(vec2(0.125f, 1.0f), 8, vec2(0.0f, 4.0f) + ori * vec2(0.0f, i), ori, axiom::hsv_color(rand() * 0.125f + 2.25f, 0.65f, 1.0f), 1.0f);
 
         if(i != 0) {
             auto& collider = axiom::ecs.get_component<axiom::collider2d>(e);
@@ -515,7 +492,49 @@ int main(int argc, char **argv) {
 
         prevs.push_back(e);
     }
+}
 
+int main(int argc, char **argv) {
+    axiom::window window(ivec2(256), ivec2(1000, 500), 0, "Axiom", false);
+
+    axiom::ui_init(&window);
+    axiom::render_init(&window);
+    axiom::physics2d_init();
+    //axiom::physics3d_init();
+
+    axiom::render_system& render_system = axiom::ecs.get_system<axiom::render_system>();
+    render_system.targets.reserve(5);
+
+    //axiom::ecs.get_system<axiom::ui_system>().font_handler.process_ttf("res/Oxanium-Medium.ttf", "test");
+
+    // create collectors
+    axiom::signature sig;
+    axiom::collector col;
+
+    sig = axiom::update_signature<axiom::transform2d>();
+    axiom::update_signature<axiom::color_mesh2d>(sig);
+    col = axiom::collector(sig);
+    axiom::ecs.create_collector("color_mesh2d", col);
+
+    //
+
+    // create and initialize camera
+    uint camera_entity = axiom::ecs.insert_entity();
+
+    axiom::camera2d cam;
+    cam.aspect = vec2(1.0f, 1.0f);
+    cam.zoom = 1.0f;
+
+    axiom::transform2d transform;
+    transform.position = vec2(0.0f, 0.0f);
+    transform.orientation = glm::identity<mat2>();
+
+    axiom::ecs.insert_component(camera_entity, cam);
+    axiom::ecs.insert_component(camera_entity, transform);
+
+    // create target callback and pass in camera
+
+    set_scene();
 
     //
 
@@ -542,7 +561,7 @@ int main(int argc, char **argv) {
         axiom::physics_system2d& physics = axiom::ecs.get_system<axiom::physics_system2d>();
         axiom::ui_system& ui_system = axiom::ecs.get_system<axiom::ui_system>();
         
-        uint camera = *axiom::ecs.collectors["camera"].entities.begin();
+        uint camera = camera_entity;
 
         axiom::transform2d& camera_transform = axiom::ecs.get_component<axiom::transform2d>(camera);
         axiom::camera2d& camera_cam = axiom::ecs.get_component<axiom::camera2d>(camera);
@@ -709,7 +728,7 @@ int main(int argc, char **argv) {
         axiom::column_widget::insert();
         axiom::row_widget::insert();
 
-        axiom::button_widget::insert(vec2(32.0f), axiom::color_purple, vec4(0, 116, 12, 12), 
+        axiom::button_widget::insert(vec2(32.0f), axiom::color_purple, vec4(0, 112, 16, 16), 
             [](axiom::button_widget& self) {
                 static bool update = true;
                 static bool psym = false;
@@ -734,14 +753,14 @@ int main(int argc, char **argv) {
                             }
                         }
 
-                        self.icon = vec4(0, 116, 12, 12);
+                        self.icon = vec4(0, 112, 16, 16);
                     } else {
                         ui_system.input_set(self.parent);
                         ui_system.buffer(vec4(6.0f));
 
                         //
                         
-                        ulong continue_button = axiom::button_widget::insert(vec2(32.0f), axiom::color_purple, vec4(36, 116, 12, 12), 
+                        ulong continue_button = axiom::button_widget::insert(vec2(32.0f), axiom::color_purple, vec4(48, 112, 16, 16), 
                             [physics](axiom::button_widget& self) {
                                 if(self.held) {
                                     physics->sim_active = true;
@@ -756,7 +775,7 @@ int main(int argc, char **argv) {
                         
                         //
 
-                        ulong step_button = axiom::button_widget::insert(vec2(32.0f), axiom::color_purple, vec4(24, 116, 12, 12), 
+                        ulong step_button = axiom::button_widget::insert(vec2(32.0f), axiom::color_purple, vec4(32, 112, 16, 16), 
                             [physics](axiom::button_widget& self) {
                                 if(self.pressed) {
                                     physics->physics_loop();
@@ -767,8 +786,20 @@ int main(int argc, char **argv) {
                         parent_widget->children.pop_back();
                         parent_widget->children.insert(parent_widget->children.begin(), step_button);
                         
-                        self.icon = vec4(12, 116, 12, 12);
+                        self.icon = vec4(16, 112, 16, 16);
                     }
+                }
+            }
+        );
+        
+        ui_system.input_step();
+        
+        axiom::row_widget::insert();
+        axiom::button_widget::insert(vec2(32.0f), axiom::color_orange, vec4(48, 80, 16, 16), 
+            [](axiom::button_widget& self) {
+                if(self.pressed) {
+                    clear_scene();
+                    set_scene();
                 }
             }
         );
@@ -842,6 +873,30 @@ int main(int argc, char **argv) {
                                             }
                                             
                                             self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                                        }
+                                    );
+                                    
+                                    axiom::text_widget::insert("Constraint Softness", axiom::text_alignment::LEFT, false);
+                                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                                    axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(0.0f, 0.125f), 0.0025f, 0.0f, "", 
+                                        [](axiom::slider_widget& self) {
+                                            if(self.pressed) {
+                                                axiom::ecs.get_system<axiom::physics_system2d>().solver_softness = self.current_value;
+                                            } else {
+                                                self.current_value = axiom::ecs.get_system<axiom::physics_system2d>().solver_softness;
+                                            }
+                                            
+                                            self.text[0]->string = axiom::to_base(self.current_value, 10, 4);
+                                        }
+                                    );
+                                    
+                                    axiom::text_widget::insert("Warm Starting", axiom::text_alignment::LEFT, false);
+                                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                                    ui_system.position(axiom::position_mode::CENTER);
+                                    axiom::checkbox_widget::insert(vec2(16.0f), axiom::color_red, false, 
+                                        [](axiom::checkbox_widget& self) {
+                                            if(self.clicked) axiom::ecs.get_system<axiom::physics_system2d>().warm_start = self.checked;
+                                            else self.checked = axiom::ecs.get_system<axiom::physics_system2d>().warm_start;
                                         }
                                     );
 

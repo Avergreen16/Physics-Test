@@ -489,23 +489,19 @@ std::function<void(axiom::framebuffer&, axiom::transform3d&, mat4, mat4, float)>
         axiom::transform3d& transform = axiom::ecs.get_component<axiom::transform3d>(entity);
         axiom::color_mesh3d& mesh = axiom::ecs.get_component<axiom::color_mesh3d>(entity);
 
-        if(mesh.radius > pixel_size) {
-            mat4 model = axiom::get_model(transform, shadow_transform);
-            axiom::shader& color_shader = axiom::get_shader("color3d");
+        mat4 model = axiom::get_model(transform, shadow_transform);
+        axiom::shader& color_shader = axiom::get_shader("color3d");
 
-            vec3 light_dir = normalize(vec3(1.0f, 1.0f, 1.0f));
+        //
 
-            //
+        color_shader.use();
 
-            color_shader.use();
+        glUniformMatrix4fv(0, 1, false, &model[0][0]);
+        glUniformMatrix4fv(1, 1, false, &view[0][0]);
+        glUniformMatrix4fv(2, 1, false, &proj[0][0]);
+        glUniform1f(3, light_contrast);
 
-            glUniformMatrix4fv(0, 1, false, &model[0][0]);
-            glUniformMatrix4fv(1, 1, false, &view[0][0]);
-            glUniformMatrix4fv(2, 1, false, &proj[0][0]);
-            glUniform1f(3, light_contrast);
-
-            mesh.vertices->draw_vertices_triangles();
-        }
+        mesh.vertices->draw_vertices_triangles();
     }
 
     auto& collector_texture = axiom::ecs.collectors["texture_mesh3d"];
@@ -514,24 +510,20 @@ std::function<void(axiom::framebuffer&, axiom::transform3d&, mat4, mat4, float)>
         axiom::transform3d& transform = axiom::ecs.get_component<axiom::transform3d>(entity);
         axiom::texture_mesh3d& mesh = axiom::ecs.get_component<axiom::texture_mesh3d>(entity);
 
-        if(mesh.radius > pixel_size) {
-            mat4 model = axiom::get_model(transform, shadow_transform);
-            axiom::shader& texture_shader = axiom::get_shader("texture3d");
+        mat4 model = axiom::get_model(transform, shadow_transform);
+        axiom::shader& texture_shader = axiom::get_shader("texture3d");
 
-            vec3 light_dir = normalize(vec3(1.0f, 1.0f, 1.0f));
+        //
 
-            //
+        texture_shader.use();
+        mesh.texture->bind(0);
 
-            texture_shader.use();
-            mesh.texture->bind(0);
+        glUniformMatrix4fv(0, 1, false, &model[0][0]);
+        glUniformMatrix4fv(1, 1, false, &view[0][0]);
+        glUniformMatrix4fv(2, 1, false, &proj[0][0]);
+        glUniform1f(3, light_contrast);
 
-            glUniformMatrix4fv(0, 1, false, &model[0][0]);
-            glUniformMatrix4fv(1, 1, false, &view[0][0]);
-            glUniformMatrix4fv(2, 1, false, &proj[0][0]);
-            glUniform1f(3, light_contrast);
-
-            mesh.vertices->draw_vertices_triangles();
-        }
+        mesh.vertices->draw_vertices_triangles();
     }
 
     auto& collector_texture_range = axiom::ecs.collectors["texture_range_mesh3d"];
@@ -540,22 +532,20 @@ std::function<void(axiom::framebuffer&, axiom::transform3d&, mat4, mat4, float)>
         axiom::transform3d& transform = axiom::ecs.get_component<axiom::transform3d>(entity);
         axiom::texture_range_mesh3d& mesh = axiom::ecs.get_component<axiom::texture_range_mesh3d>(entity);
 
-        if(mesh.radius > pixel_size) {
-            mat4 model = axiom::get_model(transform, shadow_transform);
-            axiom::shader& texture_shader = axiom::get_shader("texture_range3d");
+        mat4 model = axiom::get_model(transform, shadow_transform);
+        axiom::shader& texture_shader = axiom::get_shader("texture_range3d");
 
-            //
+        //
 
-            texture_shader.use();
-            mesh.texture->bind(0);
+        texture_shader.use();
+        mesh.texture->bind(0);
 
-            glUniformMatrix4fv(0, 1, false, &model[0][0]);
-            glUniformMatrix4fv(1, 1, false, &view[0][0]);
-            glUniformMatrix4fv(2, 1, false, &proj[0][0]);
-            glUniform1f(3, light_contrast);
+        glUniformMatrix4fv(0, 1, false, &model[0][0]);
+        glUniformMatrix4fv(1, 1, false, &view[0][0]);
+        glUniformMatrix4fv(2, 1, false, &proj[0][0]);
+        glUniform1f(3, light_contrast);
 
-            mesh.vertices->draw_vertices_triangles();
-        }
+        mesh.vertices->draw_vertices_triangles();
     }
 
     //glDisable(GL_CULL_FACE);
@@ -642,9 +632,9 @@ int main(int argc, char **argv) {
     {
         mat3 main_ori = random_orientation(rand);
 
-        ivec3 array = ivec3(4, 4, 4);
+        ivec3 array = ivec3(8);
         vec3 origin = vec3(0.0f, 0.0f, 6.0f);
-        float size = axiom::sqrt3 * 0.5f;
+        float size = axiom::sqrt3 * 0.25f;
         float sep = size;
 
         for(int x = 0; x < array.x; ++x) {
@@ -1031,7 +1021,7 @@ int main(int argc, char **argv) {
         axiom::column_widget::insert();
         axiom::row_widget::insert();
 
-        axiom::button_widget::insert(vec2(32.0f), axiom::color_purple, vec4(0, 116, 12, 12), 
+        axiom::button_widget::insert(vec2(32.0f), axiom::color_purple, vec4(0, 112, 16, 16), 
             [](axiom::button_widget& self) {
                 static bool update = true;
                 static bool psym = false;
@@ -1056,14 +1046,14 @@ int main(int argc, char **argv) {
                             }
                         }
 
-                        self.icon = vec4(0, 116, 12, 12);
+                        self.icon = vec4(0, 112, 16, 16);
                     } else {
                         ui_system.input_set(self.parent);
                         ui_system.buffer(vec4(6.0f));
 
                         //
                         
-                        ulong continue_button = axiom::button_widget::insert(vec2(32.0f), axiom::color_purple, vec4(36, 116, 12, 12), 
+                        ulong continue_button = axiom::button_widget::insert(vec2(32.0f), axiom::color_purple, vec4(48, 112, 16, 16), 
                             [physics](axiom::button_widget& self) {
                                 if(self.held) {
                                     physics->sim_active = true;
@@ -1078,7 +1068,7 @@ int main(int argc, char **argv) {
                         
                         //
 
-                        ulong step_button = axiom::button_widget::insert(vec2(32.0f), axiom::color_purple, vec4(24, 116, 12, 12), 
+                        ulong step_button = axiom::button_widget::insert(vec2(32.0f), axiom::color_purple, vec4(32, 112, 16, 16), 
                             [physics](axiom::button_widget& self) {
                                 if(self.pressed) {
                                     physics->physics_loop();
@@ -1089,7 +1079,7 @@ int main(int argc, char **argv) {
                         parent_widget->children.pop_back();
                         parent_widget->children.insert(parent_widget->children.begin(), step_button);
                         
-                        self.icon = vec4(12, 116, 12, 12);
+                        self.icon = vec4(16, 112, 16, 16);
                     }
                 }
             }
@@ -1099,7 +1089,7 @@ int main(int argc, char **argv) {
 
         axiom::row_widget::insert();
         
-        axiom::button_widget::insert(vec2(32.0f), axiom::color_green * 0.5f, vec4(96, 54, 14, 10), 
+        axiom::button_widget::insert(vec2(32.0f), axiom::color_green * 0.5f, vec4(32, 80, 16, 16), 
             [](axiom::button_widget& self) {
                 if(self.pressed) {
                     debug_mode = !debug_mode;
@@ -1109,7 +1099,7 @@ int main(int argc, char **argv) {
             }
         );
 
-        axiom::button_widget::insert(vec2(32.0f), axiom::color_red, vec4(48, 116, 12, 12), 
+        axiom::button_widget::insert(vec2(32.0f), axiom::color_red, vec4(48, 64, 16, 16), 
             [](axiom::button_widget& self) {
                 if(self.pressed) {
                     do_render_grid = !do_render_grid;

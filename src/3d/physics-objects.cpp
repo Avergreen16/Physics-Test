@@ -158,7 +158,7 @@ void make_world(world_params params) {
     // blue moon
     populations.clear();
     populations.push_back({0.025f, 0.085f, 5.0f, 125, 0});
-    populations.push_back({0.005f, 0.025f, 25.0f, 50000, 200});
+    populations.push_back({0.005f, 0.025f, 25.0f, 50000, 250});
     std::vector<vec3> colors = {
         axiom::hsv_color(5.85, 0.4, 0.15),
         axiom::hsv_color(5.85, 0.4, 0.125),
@@ -172,7 +172,7 @@ void make_world(world_params params) {
         */
     };
 
-    uint seed = 0xB1;
+    uint seed = 0xD1;
     vec3 position = params.position;
     mat3 orientation = glm::identity<mat3>();
     vec3 dimensions = params.radii;

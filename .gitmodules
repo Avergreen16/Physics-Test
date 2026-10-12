@@ -31,3 +31,6 @@
 [submodule "external/harfbuzz"]
 	path = external/harfbuzz
 	url = https://github.com/harfbuzz/harfbuzz
+[submodule "external/addie"]
+	path = external/addie
+	url = https://github.com/Avergreen16/Addie.git
