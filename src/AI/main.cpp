@@ -1,5 +1,6 @@
 #include <include/addie.hpp>
 #include <numeric>
+#include <csignal>
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -11,6 +12,8 @@ vec4 blue_color = vec4(0.0f, 0.0f, 1.0f, 1.0f);
 
 std::vector<std::vector<float>> training_inputs;
 std::vector<std::vector<float>> training_outputs;
+std::vector<std::vector<float>> test_inputs;
+std::vector<std::vector<float>> test_outputs;
 
 std::vector<float> function(vec2 point) {
     float a = 0.3f - length(point - vec2(-0.5f, 0.0f));
@@ -25,146 +28,145 @@ std::vector<float> function(vec2 point) {
     return {1.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 }
 
-int main() {
-    addie::random32 rand(0xF01D);
-    addie::network ai({2, 100, 100, 200, 5}, 0xF01D);
+bool interrupt = false;
+void handle_interrupt(int) {
+    std::cout << "caught SIGINT, outputting current results\n";
+    interrupt = true;
+}
+
+std::vector<uint> permute(std::vector<uint> base, addie::random32& rand, uint batch_size) {
+    for(int i = 0; i < batch_size; ++i) {
+        uint j = i + rand.next() % (int(base.size() - 1) - i);
+
+        std::swap(base[i], base[j]);
+    }
+
+    return std::vector<uint>(base.begin(), base.begin() + batch_size);
+}
+
+int main(int argc, char** argv) {
+    std::signal(SIGINT, handle_interrupt);
+
+    uint num_steps;
+    if(argc > 1) num_steps = std::stoi(argv[1]);
+    else num_steps = 1000;
+
+    //
+
+    addie::random32 rand(0x3F4);
+    addie::network ai({14 * 14 * 16, 100, 10}, 0x3F4);
+    ai.players.resize(1);
+    ai.players[0].initialize(ivec3(28, 28, 16), 2);
+    ai.clayers.resize(3);
+    ai.clayers[0].initialize(ivec3(28, 28, 1), ivec3(28, 28, 8), ivec2(5), rand.next());
+    ai.clayers[1].initialize(ivec3(28, 28, 8), ivec3(28, 28, 16), ivec2(3), rand.next());
+    ai.clayers[2].initialize(ivec3(28, 28, 16), ivec3(28, 28, 16), ivec2(3), rand.next());
+
+    if(argc > 2) ai.read_params(argv[2]);
+
     std::vector<uint8_t> bytes;
+
+    //
 
     ivec2 image_size;
     auto images = addie::decode_idx3("external/addie/res/train-images.idx3-ubyte", image_size);
     auto labels = addie::decode_idx1("external/addie/res/train-labels.idx1-ubyte");
-
-    ivec2 size = ivec2(512, 512);
-    vec4 range = vec4(-1.0f, -1.0f, 1.0f, 1.0f);
-    for(int y = 0; y < size.y; ++y) {
-        for(int x = 0; x < size.x; ++x) {
-            vec2 pos = (vec2(x, y) + 0.5f) / vec2(size);
-            pos = range.xy() + pos * (range.zw() - range.xy());
-
-            std::vector<float> output = function(pos);
-            vec4 color = output[0] * vec4(1.0f, 0.0f, 0.0f, 1.0f) + output[1] * vec4(1.0f, 1.0f, 0.0f, 1.0f) + output[2] * vec4(0.0f, 1.0f, 0.0f, 1.0f) + output[3] * vec4(0.0f, 1.0f, 1.0f, 1.0f) + output[4] * vec4(0.0f, 0.0f, 1.0f, 1.0f);
-
-            bytes.push_back(color.x * 0xFF);
-            bytes.push_back(color.y * 0xFF);
-            bytes.push_back(color.z * 0xFF);
-            bytes.push_back(color.w * 0xFF);
+    for(int i = 0; i < images.size(); ++i) {
+        std::vector<float> image(images[i].size());
+        for(int j = 0; j < images[i].size(); ++j) {
+            image[j] = float(images[i][j]) / 0xFF;
         }
+
+        uint8_t label = labels[i]; 
+        std::vector<float> outputs(10, 0.0f);
+        outputs[label] = 1.0f;
+
+        training_inputs.push_back(image);
+        training_outputs.push_back(outputs);
     }
 
-    stbi_flip_vertically_on_write(1);
-    stbi_write_png("output/addie_target.png", size.x, size.y, 4, bytes.data(), size.x * 4);
+    images = addie::decode_idx3("external/addie/res/test-images.idx3-ubyte", image_size);
+    labels = addie::decode_idx1("external/addie/res/test-labels.idx1-ubyte");
+    for(int i = 0; i < images.size(); ++i) {
+        std::vector<float> image(images[i].size());
+        for(int j = 0; j < images[i].size(); ++j) {
+            image[j] = float(images[i][j]) / 0xFF;
+        }
+
+
+        uint8_t label = labels[i]; 
+        std::vector<float> outputs(10, 0.0f);
+        outputs[label] = 1.0f;
+
+        test_inputs.push_back(image);
+        test_outputs.push_back(outputs);
+    }
+
+    //std::cout << "ERROR: " << ai.compute_error(test_inputs, test_outputs).x << std::endl;
+    
+    uint batch_size = 32;
+
+    std::vector<uint> permutation_base(training_inputs.size());
+    std::iota(permutation_base.begin(), permutation_base.end(), 0);
+    std::vector<uint> permutation_base2(permutation_base.begin(), permutation_base.begin() + test_inputs.size());
 
     //
 
-    uint num_steps = 100000;
-    training_inputs.clear();
-    training_outputs.clear();
-
-    ivec2 grid = ivec2(128, 128);
-    for(int x = 0; x < grid.x; ++x) {
-        for(int y = 0; y < grid.y; ++y) { 
-            vec2 point = vec2(x, y) / vec2(grid) * (range.zw() - range.xy()) + range.xy();
-            point += vec2(0.5f, 0.5f) / vec2(grid);//vec2(rand(), rand()) / vec2(grid);
-
-            training_outputs.push_back({function(point)});
-            training_inputs.push_back({point.x, point.y});
-        }
-    }
-    
-    vec2 error = ai.compute_error(training_inputs, training_outputs);
-    std::cout << "ERROR: " << error.x << " LOSS: " << error.y << "\n";
-
-    std::vector<uint> permutation_base(grid.x * grid.y);
-    std::iota(permutation_base.begin(), permutation_base.end(), 0);
-
     double start_time = addie::get_time();
-
-    uint batch_size = 64;
     
     float frac = 0.0f;
     for(int k = 0; k < num_steps; ++k) {
-        std::vector<std::vector<float>> batch_inputs(glm::min(uint(permutation_base.size()), batch_size));
-        std::vector<std::vector<float>> batch_outputs(glm::min(uint(permutation_base.size()), batch_size));
-        std::vector<uint> permutation = permutation_base;
+        if(interrupt) break;
 
-        for(int i = 0; i < glm::min(uint(permutation_base.size() - 1), batch_size); ++i) {
-            uint j = i + rand.next() % (int(permutation_base.size() - 1) - i);
+        std::vector<std::vector<float>> batch_inputs(batch_size);
+        std::vector<std::vector<float>> batch_outputs(batch_size);
 
-            std::swap(permutation[i], permutation[j]);
-        }
-        
+        //
 
-        for(int i = 0; i < glm::min(uint(permutation_base.size()), batch_size); ++i) {
+        std::vector<uint> permutation = permute(permutation_base, rand, batch_size);
+        for(int i = 0; i < batch_size; ++i) {
             uint j = permutation[i];
 
             batch_inputs[i] = training_inputs[j]; 
             batch_outputs[i] = training_outputs[j];
         }
 
-        ai.learn(batch_inputs, batch_outputs, 0.01f);
+        ai.learn(batch_inputs, batch_outputs, 0.02f);
 
         //
 
+        std::stringstream ss;
         float new_frac = float(k + 1) / num_steps;
 
 
-        if(floor(new_frac * 100) != floor(frac * 100)) {
-            frac = new_frac;
-
+        if(floor(new_frac * 1000) != floor(frac * 1000)) {
             double current_time = addie::get_time();
             double elapsed = current_time - start_time;
             double time_left = elapsed * ((1.0f - frac) / frac);
-
-            std::cout << "\nPROGRESS: " << int(new_frac * 100) << std::dec << "%\n";
-            //std::cout << "\nPROGRESS: " << std::uppercase << std::hex << int(new_frac * 4096) << std::nouppercase << std::dec << "%\n";
-            std::cout << "elapsed time: " << elapsed << " time left: " << time_left << "\n";
-
-            vec2 error = ai.compute_error(training_inputs, training_outputs);
-            std::cout << "ERROR: " << error.x << " LOSS: " << error.y << "\n";
+            ss << "time elapsed: " << elapsed << " time left: " << time_left << " "; 
         }
-    }
 
-    float total_error = 0.0f;
-    float accum = 0.0f;
-
-    std::vector<std::vector<float>> outputs(size.x * size.y);
-    for(int x = 0; x < size.x; ++x) {
-        for(int y = 0; y < size.y; ++y) {
-            vec2 pos = (vec2(x, y) + 0.5f) / vec2(size);
-            pos = range.xy() + pos * (range.zw() - range.xy());
-
-            std::vector<float> inputs = {pos.x, pos.y};
-            std::vector<float> target = function(pos);
-
-            std::vector<float> o = ai.sample(inputs);
-
-            outputs[y * size.x + x] = {o};
+        if(floor(new_frac * 100) != floor(frac * 100)) {
+            std::vector<std::vector<float>> batch_inputs(2000);
+            std::vector<std::vector<float>> batch_outputs(2000);
             
-            for(int i = 0; i < target.size(); ++i) total_error += abs(target[i] - o[i]);
-            accum += target.size();
+            std::vector<uint> permutation = permute(permutation_base2, rand, 2000);
+            for(int i = 0; i < 2000; ++i) {
+                uint j = permutation[i];
+
+                batch_inputs[i] = test_inputs[j]; 
+                batch_outputs[i] = test_outputs[j];
+            }
+            
+            ss << "ERROR: " << ai.compute_error(batch_inputs, batch_outputs).x;
         }
+
+        frac = new_frac;
+
+        if(ss.str().size()) std::cout << ss.str() << std::endl;
     }
     
-    std::cout << "FINISH ERROR: " << total_error / accum << "\n";
-
     //
 
-    bytes.clear();
-
-    for(int y = 0; y < size.y; ++y) {
-        for(int x = 0; x < size.x; ++x) {
-            int i = y * size.x + x;
-
-            auto& output = outputs[i];
-            vec4 color = output[0] * vec4(1.0f, 0.0f, 0.0f, 1.0f) + output[1] * vec4(1.0f, 1.0f, 0.0f, 1.0f) + output[2] * vec4(0.0f, 1.0f, 0.0f, 1.0f) + output[3] * vec4(0.0f, 1.0f, 1.0f, 1.0f) + output[4] * vec4(0.0f, 0.0f, 1.0f, 1.0f);
-
-            bytes.push_back(color.x * 0xFF);
-            bytes.push_back(color.y * 0xFF);
-            bytes.push_back(color.z * 0xFF);
-            bytes.push_back(color.w * 0xFF);
-        }
-    }
-
-    stbi_flip_vertically_on_write(1);
-    stbi_write_png("output/addie.png", size.x, size.y, 4, bytes.data(), size.x * 4);
+    ai.write_params("output/addie_params" + std::to_string(addie::get_timestamp()) + ".bin");
 }
