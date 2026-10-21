@@ -1,0 +1,40 @@
+<root name = "Axiom">
+    <screen>
+        <attachment id = "0">
+            <render func = "render-base"/>
+
+            <set docking = "top-left" buffer = "4"/>
+            <column>
+                <text wrap = "no" callback = "tcall-FPS"/>
+                <text wrap = "no" callback = "tcall-position"/>
+            </column>
+            
+            <set docking = "top-right" buffer = "6"/>
+            <column>
+                <row>
+                    <ontoggle var = "physics-toggle">
+                        off
+                        <button size = "32 32" icon = "48 112 16 16" color = "purple" callback = "bcall-physics-play" var = "physics-toggle"/>
+                        <button size = "32 32" icon = "32 112 16 16" color = "purple" callback = "bcall-physics-step"/>
+                        <button size = "32 32" icon = "16 112 16 16" color = "purple" callback = "bcall-physics-run"/>
+                        on
+                        <button size = "32 32" icon = "0 112 16 16" color = "purple" callback = "bcall-physics-run" var = "physics-toggle"/>
+                    </ontoggle>
+                </row>
+
+                <row>
+                    <button size = "32 32" icon = "48 80 16 16" color = "orange" callback = "bcall-physics-reset"/>
+                </row>
+            </column>
+        </attachment>
+        <attachment id = "1">
+            <row>
+                <set buffer = "4"/>
+                <button text = "File" size = "40 16"/>
+                <button text = "Edit" size = "40 16"/>
+                <button text = "Debug" size = "50 16"/>
+                <button text = "Super Secret" size = "100 40"/>
+            </row>
+        </attachment>
+    </screen>
+</root>

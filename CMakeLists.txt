@@ -73,6 +73,7 @@ target_compile_options(example-3d PRIVATE
 
 add_executable(example-2d
     src/2d/main.cpp
+    ${CMAKE_SOURCE_DIR}/external/pugixml/src/pugixml.cpp
 )
 
 target_include_directories(example-2d PUBLIC 
@@ -80,6 +81,7 @@ target_include_directories(example-2d PUBLIC
 
     ${CMAKE_SOURCE_DIR}/external/lua
     ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/external/pugixml/src
 )
 
 set_target_properties(example-2d PROPERTIES OUTPUT_NAME "example-2d")
