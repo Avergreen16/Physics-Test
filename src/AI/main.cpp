@@ -48,49 +48,73 @@ int main(int argc, char** argv) {
     std::signal(SIGINT, handle_interrupt);
 
     uint num_steps = 1000;
-    float momentum_decay = 0.85;
-    float learning_rate = 0.01f;
-    
-    if(argc > 1) momentum_decay = std::stof(argv[1]);
-    if(argc > 2) learning_rate = std::stof(argv[2]);
-    if(argc > 3) num_steps = std::stoi(argv[3]);
+    uint batch_size = 64;
 
-    std::cout << momentum_decay << " " << learning_rate << "\n";
+    float rate = 0.001f;
+    float B1 = 0.9f;
+    float B2 = 0.999f;
+    
+    if(argc > 1) num_steps = std::stoi(argv[1]);
+    if(argc > 2) batch_size = std::stoi(argv[2]);
+    if(argc > 3) B1 = std::stof(argv[3]);
+    if(argc > 4) B2 = std::stof(argv[4]);
+    if(argc > 5) rate = std::stof(argv[5]);
 
     //
 
-    addie::random32 rand(0xE1);
-    /*
-    addie::network ai({7 * 7 * 24, 128, 64, 32, 10}, 0xE1);
-    ai.players.resize(2);
-    ai.players[0].initialize(ivec3(28, 28, 16), 2);
-    ai.players[1].initialize(ivec3(14, 14, 24), 2);
-    ai.clayers.resize(2);
-    ai.clayers[0].initialize(ivec3(28, 28, 1), ivec3(28, 28, 16), ivec2(5), rand.next());
-    ai.clayers[1].initialize(ivec3(14, 14, 16), ivec3(14, 14, 24), ivec2(3), rand.next());
+    addie::random32 rand(0x8F);
+    
+    addie::network ai({10 * 10 * 32, 240, 160, 10}, 0xEE1);
+    ai.pooling_layers.resize(2);
+    ai.pooling_layers[0].initialize(ivec3(24, 24, 16), 2);
+    ai.conv_layers.resize(2);
+    ai.conv_layers[0].initialize(ivec3(28, 28, 1), ivec3(5, 5, 16), rand.next());
+    ai.conv_layers[1].initialize(ivec3(12, 12, 16), ivec3(3, 3, 32), rand.next());
 
     ai.tags = {
         {addie::tag_layer::CONV, 0},
         {addie::tag_layer::POOLING, 0},
         {addie::tag_layer::CONV, 1},
-        {addie::tag_layer::POOLING, 1},
         {addie::tag_layer::DENSE, 0},
         {addie::tag_layer::DENSE, 1},
         {addie::tag_layer::DENSE, 2},
-        {addie::tag_layer::DENSE, 3},
-    };
-    */
-    
-    
-    addie::network ai({784, 128, 64, 32, 10}, 0xE1);
-    ai.tags = {
-        {addie::tag_layer::DENSE, 0},
-        {addie::tag_layer::DENSE, 1},
-        {addie::tag_layer::DENSE, 2},
-        {addie::tag_layer::DENSE, 3},
     };
 
-    //if(argc > 4) ai.read_params(argv[4]);
+    /*
+    time elapsed: 3.56456 time left: 354.323 ERROR: 0.258275
+    time elapsed: 6.92852 time left: 340.192 ERROR: 0.185375
+    time elapsed: 10.2641 time left: 332.33 ERROR: 0.127527
+    time elapsed: 13.4179 time left: 322.365 ERROR: 0.105965
+    time elapsed: 16.8836 time left: 321.059 ERROR: 0.0948143
+    time elapsed: 20.1686 time left: 316.199 ERROR: 0.0810233
+    time elapsed: 23.3538 time left: 310.462 ERROR: 0.0769935
+    time elapsed: 26.4009 time left: 303.776 ERROR: 0.0699215
+    time elapsed: 29.3375 time left: 296.78 ERROR: 0.0646131
+    time elapsed: 32.2576 time left: 290.448 ERROR: 0.0574388
+    time elapsed: 35.3563 time left: 286.181 ERROR: 0.0523461
+    time elapsed: 38.6035 time left: 283.199 ERROR: 0.0530268
+    time elapsed: 43.4748 time left: 291.05 ERROR: 0.0576706
+    time elapsed: 47.5965 time left: 292.476 ERROR: 0.0487386
+    time elapsed: 51.0689 time left: 289.481 ERROR: 0.0462369
+    time elapsed: 54.4433 time left: 285.912 ERROR: 0.0558418
+    time elapsed: 57.9385 time left: 282.957 ERROR: 0.0426778
+    time elapsed: 61.165 time left: 278.716 ERROR: 0.0454139
+    time elapsed: 64.345 time left: 274.384 ERROR: 0.0469409
+    time elapsed: 67.57 time left: 270.348 ERROR: 0.043213
+    time elapsed: 71.3413 time left: 268.444 ERROR: 0.0390803
+    time elapsed: 74.8215 time left: 265.338 ERROR: 0.0405475
+    time elapsed: 78.0504 time left: 261.358 ERROR: 0.037744
+    time elapsed: 81.4198 time left: 257.886 ERROR: 0.0360511
+    time elapsed: 0.115194 time left: 11.4505 ERROR: 0.249758
+    */
+
+    ai.rate = rate;
+    ai.B1 = B1;
+    ai.B2 = B2;
+
+    if(argc > 6) ai.read_params(argv[6]);
+
+    //
 
     std::vector<uint8_t> bytes;
 
@@ -134,13 +158,6 @@ int main(int argc, char** argv) {
     }
     test_inputs = images;
 
-    //std::cout << "ERROR: " << ai.compute_error(test_inputs, test_outputs).x << std::endl;
-    
-    //auto f = ai.compute_error_hot(test_inputs, test_outputs);
-    //std::cout << f.size() << "\n";
-    
-    uint batch_size = 96;
-
     std::vector<uint> permutation_base(training_inputs.size());
     std::iota(permutation_base.begin(), permutation_base.end(), 0);
     std::vector<uint> permutation_base2(permutation_base.begin(), permutation_base.begin() + test_inputs.size());
@@ -168,6 +185,9 @@ int main(int argc, char** argv) {
         tinputs.col(i) = vector.eval(); 
         toutputs.col(i) = test_outputs[j];
     }
+    
+    auto error = ai.compute_error(tinputs, toutputs);
+    std::cout << error.sum() / float(1024) << "\n";
     
     float frac = 0.0f;
     for(int k = 0; k < num_steps; ++k) {
@@ -198,34 +218,17 @@ int main(int argc, char** argv) {
 
         ai.learn(batch_inputs, batch_outputs);
 
-        //
-        /*
-        0.0174929
-        0.0186087
-        0.0149799
-        0.0121312
-        0.0122109
-        0.0167653
-        */
-
         std::stringstream ss;
         float new_frac = float(k + 1) / num_steps;
 
-        /*
-        if(floor(new_frac * 1000) != floor(frac * 1000)) {
-        }
-        */
-
         if(floor(new_frac * 100) != floor(frac * 100)) {
+            auto error = ai.compute_error(tinputs, toutputs);
+
             double current_time = addie::get_time();
             double elapsed = current_time - start_time;
             double time_left = elapsed * ((1.0f - frac) / frac);
+
             ss << "time elapsed: " << elapsed << " time left: " << time_left << " "; 
-
-            std::cout << "x";
-
-            auto error = ai.compute_error(tinputs, toutputs);
-            
             ss << "ERROR: " << error.sum() / float(1024);
             
             std::cout << ss.str() << std::endl; 
@@ -234,8 +237,5 @@ int main(int argc, char** argv) {
         frac = new_frac;
     }
     
-    //
-
-    std::cout << "FINISH!\n";
-    //ai.write_params("output/addie_params" + std::to_string(addie::get_timestamp()) + ".bin");
+    ai.write_params("output/addie_params" + std::to_string(addie::get_timestamp()) + ".bin");
 }
