@@ -474,8 +474,6 @@ void set_scene() {
         if(i != 0) {
             auto& collider = axiom::ecs.get_component<axiom::collider2d>(e);
 
-            //collider.non_colliding.insert(prevs.begin(), prevs.end());
-
             axiom::constraint2d cc;
             cc.a = prevs.back();
             cc.b = e;
@@ -492,6 +490,11 @@ void set_scene() {
         }
 
         prevs.push_back(e);
+    }
+
+    for(uint e : prevs) {
+        auto& collider = axiom::ecs.get_component<axiom::collider2d>(e);
+        collider.non_colliding = std::set<uint>(prevs.begin(), prevs.end());
     }
 }
 
@@ -855,7 +858,7 @@ int main(int argc, char **argv) {
                                                 self.current_value = axiom::ecs.get_system<axiom::physics_system2d>().substeps;
                                             }
                                             
-                                            self.text[0]->string = axiom::to_base(int64_t(self.current_value), 10);
+                                            self.text[0]->string = axiom::to_base(int64_t(self.current_value), 16);
                                         }
                                     );
 
@@ -869,7 +872,7 @@ int main(int argc, char **argv) {
                                                 self.current_value = axiom::ecs.get_system<axiom::physics_system2d>().iterations;
                                             }
                                             
-                                            self.text[0]->string = axiom::to_base(int64_t(self.current_value), 10);
+                                            self.text[0]->string = axiom::to_base(int64_t(self.current_value), 16);
                                         }
                                     );
                                     
@@ -1019,8 +1022,9 @@ int main(int argc, char **argv) {
                                 "Lipsum", 
                                 {},
                                 []() {
-                                    std::string lipsum = "--> Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed pulvinar sit amet urna eget commodo. Morbi pulvinar ac mauris ut tempus. Mauris aliquet ultrices nulla. In feugiat rutrum pulvinar. Nulla dictum nisl nec auctor venenatis. Etiam vel pretium metus, quis auctor tortor. Quisque quam metus, scelerisque id sagittis ac, iaculis vitae leo. Sed dapibus purus dolor, et vestibulum velit sagittis et. Aliquam vel gravida lectus, eget viverra velit. Cras bibendum, risus in bibendum volutpat, tortor dui cursus augue, quis vulputate ante nibh a ante. Nam varius arcu ac felis vestibulum suscipit. Aliquam mauris justo, placerat sit amet tincidunt eu, auctor eu nunc. Donec suscipit arcu et risus sagittis porttitor. Praesent tellus mauris, semper quis dictum sit amet, tristique in nisl. Aenean nec metus feugiat neque porttitor vulputate vel vitae sem.\nQuisque vulputate imperdiet magna ac porttitor. Vivamus eget neque sed purus tempor placerat pharetra vitae felis. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Nullam dui justo, tempus ut neque sed, finibus vestibulum eros. Morbi egestas risus non justo rhoncus blandit. Nulla facilisis a lacus vitae rutrum. Praesent facilisis ligula et lacus semper tincidunt. Mauris at urna justo. Vivamus ornare molestie turpis vulputate auctor.\nSuspendisse pellentesque, urna consectetur suscipit dapibus, leo felis scelerisque sapien, nec elementum risus risus ac ipsum. Cras interdum massa neque. In lacinia volutpat ex at pretium. Pellentesque eleifend eu elit eu fermentum. Ut eros erat, viverra vel feugiat vitae, pulvinar id dui. Sed mattis lorem ac sapien eleifend, vitae finibus turpis suscipit. Mauris viverra nunc non eros efficitur, non efficitur odio porttitor. Aenean sed eros vitae tortor hendrerit pretium at a tellus. Nulla vel accumsan justo. Etiam dignissim ac justo nec pharetra. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Aliquam maximus aliquam tempus. Aenean et dui ullamcorper, consectetur arcu non, condimentum est. Vivamus in neque sit amet dolor feugiat sollicitudin at quis felis. In hac habitasse platea dictumst.";
-
+                                    std::string lipsum = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed pulvinar sit amet urna eget commodo. Morbi pulvinar ac mauris ut tempus. Mauris aliquet ultrices nulla. In feugiat rutrum pulvinar. Nulla dictum nisl nec auctor venenatis. Etiam vel pretium metus, quis auctor tortor. Quisque quam metus, scelerisque id sagittis ac, iaculis vitae leo. Sed dapibus purus dolor, et vestibulum velit sagittis et. Aliquam vel gravida lectus, eget viverra velit. Cras bibendum, risus in bibendum volutpat, tortor dui cursus augue, quis vulputate ante nibh a ante. Nam varius arcu ac felis vestibulum suscipit. Aliquam mauris justo, placerat sit amet tincidunt eu, auctor eu nunc. Donec suscipit arcu et risus sagittis porttitor. Praesent tellus mauris, semper quis dictum sit amet, tristique in nisl. Aenean nec metus feugiat neque porttitor vulputate vel vitae sem.\nQuisque vulputate imperdiet magna ac porttitor. Vivamus eget neque sed purus tempor placerat pharetra vitae felis. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Nullam dui justo, tempus ut neque sed, finibus vestibulum eros. Morbi egestas risus non justo rhoncus blandit. Nulla facilisis a lacus vitae rutrum. Praesent facilisis ligula et lacus semper tincidunt. Mauris at urna justo. Vivamus ornare molestie turpis vulputate auctor.\nSuspendisse pellentesque, urna consectetur suscipit dapibus, leo felis scelerisque sapien, nec elementum risus risus ac ipsum. Cras interdum massa neque. In lacinia volutpat ex at pretium. Pellentesque eleifend eu elit eu fermentum. Ut eros erat, viverra vel feugiat vitae, pulvinar id dui. Sed mattis lorem ac sapien eleifend, vitae finibus turpis suscipit. Mauris viverra nunc non eros efficitur, non efficitur odio porttitor. Aenean sed eros vitae tortor hendrerit pretium at a tellus. Nulla vel accumsan justo. Etiam dignissim ac justo nec pharetra. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Aliquam maximus aliquam tempus. Aenean et dui ullamcorper, consectetur arcu non, condimentum est. Vivamus in neque sit amet dolor feugiat sollicitudin at quis felis. In hac habitasse platea dictumst.";
+                                    lipsum += "\nОсновной сюжет начинается спустя сутки после завершения событий первой части; в центре истории — недавно переехавший в Южный Парк персонаж, которого все называют «Новичком». Герой оказывается втянут в ролевую игру с борьбой между двумя враждующими фракциями супергероев, пытающимися создать собственные медиафраншизы. Играя в супергероев, персонажи неожиданно для себя сталкиваются с ростом преступности в городе, вследствие чего им приходится сражаться с суперзлодеями, генетически модифицированными чудовищами, полицией, преступными кланами и новым криминальным авторитетом.";
+                                    
                                     ui_system.input_reset();
                                     ui_system.position(axiom::position_mode::TOP_LEFT);
                                     axiom::window_widget::insert("Axiom", ivec2(200, 200), ivec2(400, 100), axiom::color_red);

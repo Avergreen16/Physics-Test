@@ -39,6 +39,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/axiom)
 add_executable(example-3d
     src/3d/main.cpp
     src/3d/physics-objects.cpp
+    src/3d/terraingen.cpp
 )
 
 target_include_directories(example-3d PUBLIC 

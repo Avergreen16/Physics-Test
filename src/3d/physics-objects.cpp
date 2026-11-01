@@ -159,34 +159,22 @@ void make_world(world_params params) {
     populations.clear();
     populations.push_back({0.025f, 0.085f, 5.0f, 125, 0});
     populations.push_back({0.005f, 0.025f, 25.0f, 50000, 250});
-    std::vector<vec3> colors = {
-        axiom::hsv_color(5.85, 0.4, 0.15),
-        axiom::hsv_color(5.85, 0.4, 0.125),
-        axiom::hsv_color(5.85, 0.4, 0.25),
-        axiom::hsv_color(5.85, 0.4, 0.25)
-        /*
-        axiom::hsv_color(0.05, 0.45, 0.25),
-        axiom::hsv_color(0.05, 0.45, 0.2),
-        axiom::hsv_color(0.05, 0.45, 0.4),
-        axiom::hsv_color(0.05, 0.45, 0.4)
-        */
-    };
+    std::vector<vec3> colors = params.colors;
 
-    uint seed = 0xD1;
     vec3 position = params.position;
     mat3 orientation = glm::identity<mat3>();
     vec3 dimensions = params.radii;
-    float amplitude = 1000.0f;
+    float amplitude = params.amplitude;
     float noise_freq = 0.3f;
     float noise_offset = 0.0f;
     float age_value = 1.0f;
     float ejecta_value = 0.25f;
     float blend_value = 0.125f;
 
-    create_planet(seed, position, orientation, dimensions, populations, colors, amplitude, noise_freq, noise_offset, age_value, ejecta_value, blend_value);
+    create_planet(params.seed, params.tidal, position, orientation, dimensions, populations, colors, amplitude, noise_freq, noise_offset, age_value, ejecta_value, blend_value);
 }
 
-void create_planet(uint seed, vec3 position, mat3 orientation, vec3 dimensions, std::vector<crater_population> populations, std::vector<vec3> colors, float amplitude, float noise_freq, float noise_offset, float age_value, float ejecta_value, float blend_value) {
+void create_planet(uint seed, bool tidal, vec3 position, mat3 orientation, vec3 dimensions, std::vector<crater_population> populations, std::vector<vec3> colors, float amplitude, float noise_freq, float noise_offset, float age_value, float ejecta_value, float blend_value) {
     std::vector<mat4> transforms = {
         get_matrix(vec3(0, 0, 1), vec3(1, 0, 0), vec3(1, 0, 0)),
         get_matrix(vec3(0, 0, 1), vec3(0, 1, 0), vec3(0, 1, 0)),
@@ -323,13 +311,13 @@ void create_planet(uint seed, vec3 position, mat3 orientation, vec3 dimensions, 
         num_prev += pop.num_craters;
     }
 
-    auto sample_moon_noise = [](vec3 pos, float seed) {
+    auto sample_moon_noise = [tidal](vec3 pos, float seed) {
         float n0 = axiom::noise_gen::perlin_noise(pos, 0.45f, 5, seed, 0.5075f);
 
         vec3 forward = vec3(1, 0, 0);
         float d = glm::smoothstep(0.0f, 1.0f, dot(normalize(pos), forward));
 
-        return 1.5 * n0 - 1.06f * d + 1.05f;
+        return 1.5 * n0 + (-1.06f * d + 1.05f) * tidal;
     };
 
     auto get_noise = [&](vec3 pos, float seed, float amplitude, int num_craters) {
@@ -380,10 +368,12 @@ void create_planet(uint seed, vec3 position, mat3 orientation, vec3 dimensions, 
             }
         }
     
-        return crater_depth;
+        return vec2{n, crater_depth - n};
     };
 
-    auto get_color = [&](vec3 pos, float elevation) {
+    auto get_color = [&](vec3 pos, float moon_elev, float crater_elev) {
+        float elevation = moon_elev + crater_elev * 0.4f;
+
         vec3 p_i = pos * dimensions;
 
         float sep = blend_value * amplitude;
@@ -429,6 +419,8 @@ void create_planet(uint seed, vec3 position, mat3 orientation, vec3 dimensions, 
             }
         }
 
+        //float col_frac = 
+
         vec3 c0 = glm::mix(colors[1], colors[3], glm::clamp(ff, 0.0f, 1.0f));
         vec3 c1 = glm::mix(colors[0], colors[2], glm::clamp(ff, 0.0f, 1.0f));
 
@@ -441,8 +433,8 @@ void create_planet(uint seed, vec3 position, mat3 orientation, vec3 dimensions, 
         crater& c = craters[i];
         vec3 pos = c.position * avg_dimension;
 
-        float height = get_noise(pos, seed, amplitude, i - 1);
-        c.height = height;
+        vec2 height = get_noise(pos, seed, amplitude, i - 1);
+        c.height = height.x + height.y;
     }
     
     auto get_normal = [&](vec3 pos, vec3 axes) {
@@ -463,6 +455,8 @@ void create_planet(uint seed, vec3 position, mat3 orientation, vec3 dimensions, 
         std::vector<uint> mesh_indices;
 
         std::vector<float> values;
+        std::vector<float> valuesx;
+        std::vector<float> valuesy;
 
         auto find_pos = [&](ivec2 pos) {
             vec3 mpos = origin + vec3(vec2(pos) / float(tiles) * width, 0);
@@ -475,7 +469,10 @@ void create_planet(uint seed, vec3 position, mat3 orientation, vec3 dimensions, 
         for(int y = 0; y < tiles + 1; ++y) {
             for(int x = 0; x < tiles + 1; ++x) {
                 vec3 pos = find_pos({x, y});
-                values.push_back(get_noise(pos * p_size, seed, amplitude, craters.size()));
+                vec2 v = get_noise(pos * p_size, seed, amplitude, craters.size());
+                values.push_back(v.x + v.y);
+                valuesx.push_back(v.x);
+                valuesy.push_back(v.y);
             }
         }
 
@@ -503,8 +500,10 @@ void create_planet(uint seed, vec3 position, mat3 orientation, vec3 dimensions, 
                 vec3 p_y = project(p_i + delta_y * diff, p_size);
 
                 float vi = values[vvi.y * (tiles + 1) + vvi.x];
-                float vx = get_noise(p_x, seed, amplitude, craters.size());
-                float vy = get_noise(p_y, seed, amplitude, craters.size());
+                vec2 vvx = get_noise(p_x, seed, amplitude, craters.size());
+                vec2 vvy = get_noise(p_y, seed, amplitude, craters.size());
+                float vx = vvx.x + vvx.y;
+                float vy = vvy.x + vvy.y;
 
                 vec3 pos_i = p_i + get_normal(p_i, p_size) * vi;
                 vec3 pos_x = p_x + get_normal(p_x, p_size) * (vx);
@@ -515,7 +514,7 @@ void create_planet(uint seed, vec3 position, mat3 orientation, vec3 dimensions, 
 
                 mesh_normals.push_back(normal);
 
-                vec3 color = get_color(pos, vi);
+                vec3 color = get_color(pos, valuesx[vvi.y * (tiles + 1) + vvi.x], valuesy[vvi.y * (tiles + 1) + vvi.x]);
                 mesh_colors.push_back(color);
             }
         }
@@ -734,13 +733,13 @@ void create_planet(uint seed, vec3 position, mat3 orientation, vec3 dimensions, 
 
 //
 
-std::vector<axiom::shape_face> get_faces(std::vector<axiom::vertex_element3d>& elements) {
+std::vector<axiom::shape_face> get_faces(std::vector<vec3>& elements) {
     std::vector<axiom::output_vertex> surface_vertices;
     std::vector<uint> surface_indices;
     axiom::create_mesh(elements, &surface_vertices, &surface_indices);
 
     vec3 center = vec3(0.0f);
-    for(auto& element : elements) center += element.center;
+    for(auto& element : elements) center += element;
     center /= elements.size();
 
     std::vector<axiom::shape_face> faces;
@@ -753,9 +752,9 @@ std::vector<axiom::shape_face> get_faces(std::vector<axiom::vertex_element3d>& e
         b = surface_vertices[b].element;
         c = surface_vertices[c].element;
 
-        vec3 va = elements[a].center;
-        vec3 vb = elements[b].center;
-        vec3 vc = elements[c].center;
+        vec3 va = elements[a];
+        vec3 vb = elements[b];
+        vec3 vc = elements[c];
 
         vec3 normal = glm::normalize(cross(va - vc, vb - vc));
         if(dot(normal, va - center) < 0.0f) normal = -normal;
@@ -787,16 +786,16 @@ std::vector<axiom::shape_face> get_faces(std::vector<axiom::vertex_element3d>& e
 
     for(auto& face : faces) {
         vec3 center = vec3(0.0f);
-        for(uint i : face.vertices) center += elements[i].center;
+        for(uint i : face.vertices) center += elements[i];
         center /= float(face.vertices.size());
 
-        vec3 x = glm::normalize(elements[face.vertices[0]].center - center);
+        vec3 x = glm::normalize(elements[face.vertices[0]] - center);
         vec3 y = glm::normalize(glm::cross(face.normal, x));
 
         std::sort(face.vertices.begin(), face.vertices.end(), 
             [center, norm = face.normal, x, y, &elements](const uint& a, const uint& b) {
-                vec3 va = elements[a].center - center;
-                vec3 vb = elements[b].center - center;
+                vec3 va = elements[a] - center;
+                vec3 vb = elements[b] - center;
 
                 float sa = dot(va, x);
                 float sb = dot(vb, x);
@@ -812,7 +811,7 @@ std::vector<axiom::shape_face> get_faces(std::vector<axiom::vertex_element3d>& e
     return faces;
 };
 
-void create_collider(axiom::collider3d& collider, axiom::transform3d& transform, std::vector<axiom::vertex_element3d>& elements, float mass = 1.0f, bool is_static = false) {
+void create_collider(axiom::collider3d& collider, axiom::transform3d& transform, std::vector<vec3>& elements, float mass = 1.0f, bool is_static = false) {
     axiom::collision_shape3d shape;
     shape.elements = elements;
     collider.shapes = {shape};
@@ -832,7 +831,7 @@ void create_collider(axiom::collider3d& collider, axiom::transform3d& transform,
     if(collider.shapes[0].elements.size() >= 3) collider.shapes[0].faces = get_faces(collider.shapes[0].elements);
 };
 
-void create_mesh(axiom::color_mesh3d& mesh, std::vector<axiom::vertex_element3d>& elements, vec3 color, bool blend_normals) {
+void create_mesh(axiom::color_mesh3d& mesh, std::vector<vec3>& elements, vec3 color, bool blend_normals) {
     std::vector<axiom::output_vertex> surface_vertices;
     std::vector<uint> surface_indices;
     axiom::create_mesh(elements, &surface_vertices, &surface_indices);
@@ -859,26 +858,6 @@ void create_mesh(axiom::color_mesh3d& mesh, std::vector<axiom::vertex_element3d>
         if(!normals.contains(i0)) normals[i0] = vec3(0.0f);
         if(!normals.contains(i1)) normals[i1] = vec3(0.0f);
         if(!normals.contains(i2)) normals[i2] = vec3(0.0f);
-
-        if(!(elements[v0.element].radii.x + elements[v0.element].radii.y == 0.0f || 
-        elements[v0.element].radii.y + elements[v0.element].radii.z == 0.0f || 
-        elements[v0.element].radii.z + elements[v0.element].radii.x == 0.0f)) {
-            normals[i0] += scaled_normal;
-        }
-
-        if(!(elements[v1.element].radii.x + elements[v1.element].radii.y == 0.0f || 
-        elements[v1.element].radii.y + elements[v1.element].radii.z == 0.0f || 
-        elements[v1.element].radii.z + elements[v1.element].radii.x == 0.0f)) {
-            normals[i1] += scaled_normal;
-        }
-
-        if(!(elements[v2.element].radii.x + elements[v2.element].radii.y == 0.0f || 
-        elements[v2.element].radii.y + elements[v2.element].radii.z == 0.0f || 
-        elements[v2.element].radii.z + elements[v2.element].radii.x == 0.0f)) {
-            normals[i2] += scaled_normal;
-        }
-
-        //
     };
 
     for(auto& [key, normal] : normals) {
@@ -958,7 +937,7 @@ void create_mesh(axiom::color_mesh3d& mesh, std::vector<axiom::vertex_element3d>
     mesh.load();
 };
 
-void create_mesh(axiom::color_mesh3d& mesh, std::vector<std::vector<axiom::vertex_element3d>>& elements, vec3 color) {
+void create_mesh(axiom::color_mesh3d& mesh, std::vector<std::vector<vec3>>& elements, vec3 color) {
     for(int j = 0; j < elements.size(); ++j) {
         std::vector<axiom::output_vertex> surface_vertices;
         std::vector<uint> surface_indices;
@@ -986,24 +965,6 @@ void create_mesh(axiom::color_mesh3d& mesh, std::vector<std::vector<axiom::verte
             if(!normals.contains(i0)) normals[i0] = vec3(0.0f);
             if(!normals.contains(i1)) normals[i1] = vec3(0.0f);
             if(!normals.contains(i2)) normals[i2] = vec3(0.0f);
-
-            if(!(elements[j][v0.element].radii.x + elements[j][v0.element].radii.y == 0.0f || 
-            elements[j][v0.element].radii.y + elements[j][v0.element].radii.z == 0.0f || 
-            elements[j][v0.element].radii.z + elements[j][v0.element].radii.x == 0.0f)) {
-                normals[i0] += scaled_normal;
-            }
-
-            if(!(elements[j][v1.element].radii.x + elements[j][v1.element].radii.y == 0.0f || 
-            elements[j][v1.element].radii.y + elements[j][v1.element].radii.z == 0.0f || 
-            elements[j][v1.element].radii.z + elements[j][v1.element].radii.x == 0.0f)) {
-                normals[i1] += scaled_normal;
-            }
-
-            if(!(elements[j][v2.element].radii.x + elements[j][v2.element].radii.y == 0.0f || 
-            elements[j][v2.element].radii.y + elements[j][v2.element].radii.z == 0.0f || 
-            elements[j][v2.element].radii.z + elements[j][v2.element].radii.x == 0.0f)) {
-                normals[i2] += scaled_normal;
-            }
 
             //
         };
@@ -1064,7 +1025,7 @@ void create_mesh(axiom::color_mesh3d& mesh, std::vector<std::vector<axiom::verte
     mesh.load();
 };
 
-void create_collider(axiom::collider3d& collider, axiom::transform3d& transform, std::vector<std::vector<axiom::vertex_element3d>>& elements, std::vector<float> masses, bool is_static = false) {
+void create_collider(axiom::collider3d& collider, axiom::transform3d& transform, std::vector<std::vector<vec3>>& elements, std::vector<float> masses, bool is_static = false) {
     for(int i = 0; i < elements.size(); ++i) {
         axiom::collision_shape3d shape;
         shape.elements = elements[i];
@@ -1078,7 +1039,7 @@ void create_collider(axiom::collider3d& collider, axiom::transform3d& transform,
     transform.position += transform.orientation * offset;
     axiom::create_bounding_box(collider);
 
-    for(auto& ee : elements) for(auto& element : ee) element.center -= offset;
+    for(auto& ee : elements) for(auto& element : ee) element -= offset;
 
     for(int i = 0; i < elements.size(); ++i) if(collider.shapes[i].elements.size() >= 3) collider.shapes[i].faces = get_faces(collider.shapes[i].elements);
 };
@@ -1088,21 +1049,21 @@ void create_cube(vec3 position, mat3 orientation, float diameter, vec3 color, fl
     axiom::color_mesh3d mesh;
     axiom::collider3d collider;
     
-    std::vector<axiom::vertex_element3d> elements = {
-        axiom::vertex_element3d{vec3(-1.0f, -1.0f, -1.0f) * 0.5f / axiom::sqrt3 * diameter},
-        axiom::vertex_element3d{vec3(1.0f, -1.0f, -1.0f) * 0.5f / axiom::sqrt3 * diameter},
-        axiom::vertex_element3d{vec3(-1.0f, 1.0f, -1.0f) * 0.5f / axiom::sqrt3 * diameter},
-        axiom::vertex_element3d{vec3(1.0f, 1.0f, -1.0f) * 0.5f / axiom::sqrt3 * diameter},
-        axiom::vertex_element3d{vec3(-1.0f, -1.0f, 1.0f) * 0.5f / axiom::sqrt3 * diameter},
-        axiom::vertex_element3d{vec3(1.0f, -1.0f, 1.0f) * 0.5f / axiom::sqrt3 * diameter},
-        axiom::vertex_element3d{vec3(-1.0f, 1.0f, 1.0f) * 0.5f / axiom::sqrt3 * diameter},
-        axiom::vertex_element3d{vec3(1.0f, 1.0f, 1.0f) * 0.5f / axiom::sqrt3 * diameter},
+    std::vector<vec3> elements = {
+        vec3{vec3(-1.0f, -1.0f, -1.0f) * 0.5f / axiom::sqrt3 * diameter},
+        vec3{vec3(1.0f, -1.0f, -1.0f) * 0.5f / axiom::sqrt3 * diameter},
+        vec3{vec3(-1.0f, 1.0f, -1.0f) * 0.5f / axiom::sqrt3 * diameter},
+        vec3{vec3(1.0f, 1.0f, -1.0f) * 0.5f / axiom::sqrt3 * diameter},
+        vec3{vec3(-1.0f, -1.0f, 1.0f) * 0.5f / axiom::sqrt3 * diameter},
+        vec3{vec3(1.0f, -1.0f, 1.0f) * 0.5f / axiom::sqrt3 * diameter},
+        vec3{vec3(-1.0f, 1.0f, 1.0f) * 0.5f / axiom::sqrt3 * diameter},
+        vec3{vec3(1.0f, 1.0f, 1.0f) * 0.5f / axiom::sqrt3 * diameter},
     };
 
     transform.position = position;
     transform.orientation = orientation;
 
-    create_mesh(mesh, elements, color);
+    create_mesh(mesh, elements, color, false);
     create_collider(collider, transform, elements, mass);
 
     uint entity = axiom::ecs.insert_entity();
@@ -1117,21 +1078,21 @@ void create_cuboid(vec3 position, mat3 orientation, vec3 axes, vec3 color, float
     axiom::color_mesh3d mesh;
     axiom::collider3d collider;
     
-    std::vector<axiom::vertex_element3d> elements = {
-        axiom::vertex_element3d{vec3(-1.0f, -1.0f, -1.0f) * 0.5f * axes},
-        axiom::vertex_element3d{vec3(1.0f, -1.0f, -1.0f) * 0.5f * axes},
-        axiom::vertex_element3d{vec3(-1.0f, 1.0f, -1.0f) * 0.5f * axes},
-        axiom::vertex_element3d{vec3(1.0f, 1.0f, -1.0f) * 0.5f * axes},
-        axiom::vertex_element3d{vec3(-1.0f, -1.0f, 1.0f) * 0.5f * axes},
-        axiom::vertex_element3d{vec3(1.0f, -1.0f, 1.0f) * 0.5f * axes},
-        axiom::vertex_element3d{vec3(-1.0f, 1.0f, 1.0f) * 0.5f * axes},
-        axiom::vertex_element3d{vec3(1.0f, 1.0f, 1.0f) * 0.5f * axes},
+    std::vector<vec3> elements = {
+        vec3{vec3(-1.0f, -1.0f, -1.0f) * 0.5f * axes},
+        vec3{vec3(1.0f, -1.0f, -1.0f) * 0.5f * axes},
+        vec3{vec3(-1.0f, 1.0f, -1.0f) * 0.5f * axes},
+        vec3{vec3(1.0f, 1.0f, -1.0f) * 0.5f * axes},
+        vec3{vec3(-1.0f, -1.0f, 1.0f) * 0.5f * axes},
+        vec3{vec3(1.0f, -1.0f, 1.0f) * 0.5f * axes},
+        vec3{vec3(-1.0f, 1.0f, 1.0f) * 0.5f * axes},
+        vec3{vec3(1.0f, 1.0f, 1.0f) * 0.5f * axes},
     };
 
     transform.position = position;
     transform.orientation = orientation;
 
-    create_mesh(mesh, elements, color);
+    create_mesh(mesh, elements, color, false);
     create_collider(collider, transform, elements, mass, mass == 0.0f);
 
     uint entity = axiom::ecs.insert_entity();
@@ -1146,17 +1107,17 @@ void create_tetrahedron(vec3 position, mat3 orientation, float diameter, vec3 co
     axiom::collider3d collider;
     uint entity = axiom::ecs.insert_entity();
 
-    std::vector<axiom::vertex_element3d> elements = {
-        axiom::vertex_element3d{vec3(1.0f, -1.0f, -1.0f) / axiom::sqrt3 * 0.5f * diameter},
-        axiom::vertex_element3d{vec3(-1.0f, 1.0f, -1.0f) / axiom::sqrt3 * 0.5f * diameter},
-        axiom::vertex_element3d{vec3(-1.0f, -1.0f, 1.0f) / axiom::sqrt3 * 0.5f * diameter},
-        axiom::vertex_element3d{vec3(1.0f, 1.0f, 1.0f) / axiom::sqrt3 * 0.5f * diameter},
+    std::vector<vec3> elements = {
+        vec3{vec3(1.0f, -1.0f, -1.0f) / axiom::sqrt3 * 0.5f * diameter},
+        vec3{vec3(-1.0f, 1.0f, -1.0f) / axiom::sqrt3 * 0.5f * diameter},
+        vec3{vec3(-1.0f, -1.0f, 1.0f) / axiom::sqrt3 * 0.5f * diameter},
+        vec3{vec3(1.0f, 1.0f, 1.0f) / axiom::sqrt3 * 0.5f * diameter},
     };
 
     transform.position = position;
     transform.orientation = orientation;
 
-    create_mesh(mesh, elements, color);
+    create_mesh(mesh, elements, color, false);
     create_collider(collider, transform, elements, mass, mass == 0.0f);
 
     axiom::ecs.insert_component(entity, transform);
@@ -1169,22 +1130,22 @@ void create_bipyramid(vec3 position, mat3 orientation, float diameter, int num_v
     axiom::color_mesh3d mesh;
     axiom::collider3d collider;
     
-    std::vector<axiom::vertex_element3d> elements = {
-        axiom::vertex_element3d{vec3(0.0f, 0.0f, 1.0f) * 0.5f * diameter},
-        axiom::vertex_element3d{vec3(0.0f, 0.0f, -1.0f) * 0.5f * diameter},
+    std::vector<vec3> elements = {
+        vec3{vec3(0.0f, 0.0f, 1.0f) * 0.5f * diameter},
+        vec3{vec3(0.0f, 0.0f, -1.0f) * 0.5f * diameter},
     };
 
     for(int i = 0; i < num_vertices; ++i) {
         float angle = axiom::pi * 2.0f * (float(i) / num_vertices);
         
-        auto element = axiom::vertex_element3d{vec3(cos(angle), sin(angle), 0) * 0.5f * diameter};
+        auto element = vec3{vec3(cos(angle), sin(angle), 0) * 0.5f * diameter};
         elements.push_back(element);
     }
 
     transform.position = position;
     transform.orientation = orientation;
 
-    create_mesh(mesh, elements, color);
+    create_mesh(mesh, elements, color, false);
     create_collider(collider, transform, elements, mass, mass == 0.0f);
     
     uint entity = axiom::ecs.insert_entity();
@@ -1226,13 +1187,13 @@ void create_dodecahedron(vec3 position, mat3 orientation, float diameter, vec3 c
         vec3(phi, 1.0f / phi, 0),
     };
 
-    std::vector<axiom::vertex_element3d> elements;
-    for(vec3 v : vs) elements.push_back(axiom::vertex_element3d{v / axiom::sqrt3 * diameter * 0.5f});
+    std::vector<vec3> elements;
+    for(vec3 v : vs) elements.push_back(vec3{v / axiom::sqrt3 * diameter * 0.5f});
 
     transform.position = position;
     transform.orientation = orientation;
 
-    create_mesh(mesh, elements, color);
+    create_mesh(mesh, elements, color, false);
     create_collider(collider, transform, elements, mass, mass == 0.0f);
     
     uint entity = axiom::ecs.insert_entity();
@@ -1267,13 +1228,13 @@ void create_icosahedron(vec3 position, mat3 orientation, float diameter, vec3 co
 
     float rad = sqrt(1.0f + phi * phi);
 
-    std::vector<axiom::vertex_element3d> elements;
-    for(vec3 v : vs) elements.push_back(axiom::vertex_element3d{v / rad * 0.5f * diameter});
+    std::vector<vec3> elements;
+    for(vec3 v : vs) elements.push_back(vec3{v / rad * 0.5f * diameter});
 
     transform.position = position;
     transform.orientation = orientation;
 
-    create_mesh(mesh, elements, color);
+    create_mesh(mesh, elements, color, false);
     create_collider(collider, transform, elements, mass, mass == 0.0f);
     
     uint entity = axiom::ecs.insert_entity();
@@ -1307,8 +1268,8 @@ uint create_capsule(vec3 position, mat3 orientation, vec2 dimensions, ivec2 vert
         }
     }
 
-    std::vector<axiom::vertex_element3d> elements;
-    for(vec3 v : vs) elements.push_back(axiom::vertex_element3d{v});
+    std::vector<vec3> elements;
+    for(vec3 v : vs) elements.push_back(vec3{v});
 
     transform.position = position;
     transform.orientation = orientation;

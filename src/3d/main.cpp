@@ -4,6 +4,7 @@
 #include <include/physics3d.hpp>
 
 #include "physics-objects.hpp"
+#include "terraingen.hpp"
 
 bool debug_mode = false;
 
@@ -551,7 +552,94 @@ std::function<void(axiom::framebuffer&, axiom::transform3d&, mat4, mat4, float)>
     //glDisable(GL_CULL_FACE);
 };
 
+std::vector<vec3> vs;
+axiom::texture planet_texture;
+
+auto visualizer_render = [](uint camera_entity, axiom::framebuffer& framebuffer) {
+    axiom::transform3d& camera_transform = axiom::ecs.get_component<axiom::transform3d>(camera_entity);
+    axiom::camera3d& camera = axiom::ecs.get_component<axiom::camera3d>(camera_entity);
+
+    auto& vertices = axiom::get_vertices();
+
+    std::vector<vec2> vs = {
+        vec2(-1.0f, -1.0f),
+        vec2(1.0f, -1.0f),
+        vec2(-1.0f, 1.0f),
+        vec2(1.0f, 1.0f)};
+
+    vs = {vs[0], vs[1], vs[3], vs[0], vs[3], vs[2]};
+
+    vertices.vertex_buffer_data(vs.data(), vs.size(), sizeof(vec2), GL_STATIC_DRAW);
+    vertices.add_vertex_attribute(0, 2, GL_FLOAT, false, sizeof(vec2), 0);
+
+    axiom::transform3d grid_transform;
+    grid_transform.position = vec3(0.0f);
+    grid_transform.orientation = glm::identity<mat3>();
+
+    mat4 model = axiom::get_model(grid_transform, camera_transform);
+    mat4 view = axiom::get_view(camera, camera_transform);
+    mat4 proj = axiom::get_proj(camera);
+
+    axiom::get_shader("sphere").use();
+
+    framebuffer.textures[framebuffer.depth_texture].bind(0);
+    vertices.bind();
+    
+    planet_texture.bind(0);
+    axiom::push_uniform(0, &model);
+    axiom::push_uniform(1, &view);
+    axiom::push_uniform(2, &proj);
+
+    vertices.draw_vertices_triangles();
+
+    /*
+    static axiom::vertices vertices;
+
+    axiom::transform3d& camera_transform = axiom::ecs.get_component<axiom::transform3d>(camera_entity);
+    axiom::camera3d& camera = axiom::ecs.get_component<axiom::camera3d>(camera_entity);
+
+    glEnable(GL_DEPTH_TEST);
+
+    //
+
+    std::vector<axiom::color_vertex3d> colvs;
+    for(vec3 v : vs) colvs.push_back(axiom::color_vertex3d(v, vec4(1.0f), vec3(0.0f)));
+    if(!vertices.initialized) vertices.init();
+    vertices.vertex_buffer_data(colvs.data(), colvs.size(), sizeof(axiom::color_vertex3d), GL_STREAM_DRAW);
+    vertices.add_vertex_attribute(0, 3, GL_FLOAT, false, sizeof(axiom::color_vertex3d), 0);
+    vertices.add_vertex_attribute(1, 4, GL_FLOAT, false, sizeof(axiom::color_vertex3d), sizeof(float) * 3);
+    vertices.add_vertex_attribute(2, 3, GL_FLOAT, false, sizeof(axiom::color_vertex3d), sizeof(float) * 7);
+
+    mat4 view = axiom::get_view(camera, camera_transform);
+    mat4 proj = axiom::get_proj(camera);
+
+    //
+
+    axiom::transform3d transform{
+        .position = vec3(0.0f),
+        .orientation = glm::identity<mat3>()
+    };
+
+    mat4 model = axiom::get_model(transform, camera_transform);
+    axiom::shader& color_shader = axiom::get_shader("color3d");
+
+    //
+
+    color_shader.use();
+
+    glUniformMatrix4fv(0, 1, false, &model[0][0]);
+    glUniformMatrix4fv(1, 1, false, &view[0][0]);
+    glUniformMatrix4fv(2, 1, false, &proj[0][0]);
+
+    vertices.draw_vertices_lines();
+    */
+};
+
 int main(int argc, char **argv) {
+    terrain_generator gen;
+    gen.init();
+    auto planet_asset = gen.render();
+
     axiom::window window(ivec2(256), ivec2(512), 0, "Axiom", false);
 
     axiom::ui_init(&window);
@@ -572,6 +660,10 @@ int main(int argc, char **argv) {
         vert = axiom::text_asset::load(render_system.resource_root + "/shaders/skybox.vert");
         frag = axiom::text_asset::load(render_system.resource_root + "/shaders/skybox.frag");
         render_system.shaders.emplace("skybox", std::move(axiom::shader(vert, frag)));
+        
+        vert = axiom::text_asset::load(render_system.resource_root + "/shaders/sphere.vert");
+        frag = axiom::text_asset::load(render_system.resource_root + "/shaders/sphere.frag");
+        render_system.shaders.emplace("sphere", std::move(axiom::shader(vert, frag)));
     }
 
     //axiom::ecs.get_system<axiom::ui_system>().font_handler.process_ttf("res/Oxanium-Medium.ttf", "test");
@@ -597,6 +689,8 @@ int main(int argc, char **argv) {
     axiom::update_signature<axiom::transform3d>(sig);
     col = axiom::collector(sig);
     axiom::ecs.create_collector("collider3d", col);
+
+    planet_texture.load(planet_asset, axiom::texture_format::RGBA8);
 
     //
 
@@ -630,12 +724,13 @@ int main(int argc, char **argv) {
     }
 
     {
-        mat3 main_ori = random_orientation(rand);
+        mat3 main_ori = glm::identity<mat3>();//random_orientation(rand);
 
         ivec3 array = ivec3(8);
         vec3 origin = vec3(0.0f, 0.0f, 6.0f);
-        float size = axiom::sqrt3 * 0.25f;
-        float sep = size;
+        float size = axiom::sqrt3 * 0.5f;
+        float min_size = axiom::sqrt3 * 0.25f;
+        float sep = 0.75f;
 
         for(int x = 0; x < array.x; ++x) {
             for(int y = 0; y < array.y; ++y) {
@@ -646,28 +741,30 @@ int main(int argc, char **argv) {
                     pos *= sep;
                     pos += origin;
 
+                    float s = size;//glm::mix(rand(), size, min_size);
+
                     uint n = rand.next();
                     if(n % 16 < 10) {
                         vec3 color = axiom::hsv_color(rand() * 0.125f + 5.875f, 0.8f, 1.0f);
 
-                        create_cube(pos, main_ori, size, color);
+                        create_cube(pos, main_ori, s, color);
                     } else if(n % 16 < 12) {
                         vec3 color = axiom::hsv_color(rand() * 0.125f + 0.875f, 0.8f, 1.0f);
 
-                        create_tetrahedron(pos, main_ori, size, color);
+                        create_tetrahedron(pos, main_ori, s, color);
                     } else if(n % 16 < 14) {
                         vec3 color = axiom::hsv_color(rand() * 0.125f + 3.875f, 0.8f, 1.0f);
                         uint n = rand.next() % 5 + 3;
 
-                        create_bipyramid(pos, main_ori, size, n, color);
+                        create_bipyramid(pos, main_ori, s, n, color);
                     } else if(n % 16 < 15) {
                         vec3 color = axiom::hsv_color(rand() * 0.125f + 0.3f, 0.8f, 1.0f);
 
-                        create_dodecahedron(pos, main_ori, size, color);
+                        create_dodecahedron(pos, main_ori, s, color);
                     } else if(n % 16 < 16) {
                         vec3 color = axiom::hsv_color(rand() * 0.125f + 3.0f, 0.8f, 1.0f);
 
-                        create_icosahedron(pos, main_ori, size, color);
+                        create_icosahedron(pos, main_ori, s, color);
                     }
                 }
             }
@@ -690,12 +787,43 @@ int main(int argc, char **argv) {
     transform.orientation = glm::identity<mat3>();
     axiom::ecs.insert_component(camera_entity, transform);
 
+    transform.position = vec3(1.0f, 0.0f, 1.0f);
+    
+    uint camera_entity_vis = axiom::ecs.insert_entity();
+    axiom::ecs.insert_component(camera_entity_vis, cam);
+    axiom::ecs.insert_component(camera_entity_vis, transform);
+
     // create objects
     world_params params {
-        .radii = vec3(100000.0f),
-        .position = vec3(-300000.0f, -80000.0f, 100000.0f),
+        .radii = vec3(1200000.0f),
+        .position = vec3(-5500000.0f, 800000.0f, 1000000.0f),
+        .amplitude = 7500.0f,
+        .tidal = true,
+
         .num_chunks = 8,
-        .num_tiles = 16
+        .num_tiles = 16,
+        
+        .seed = 0xF1
+    };
+    make_world(params);
+    
+    params = world_params{
+        .radii = vec3(500000.0f),
+        .position = vec3(-10000000.0f, -4000000.0f, 1250000.0f),
+        .amplitude = 4000.0f,
+        .tidal = false,
+
+        .num_chunks = 6,
+        .num_tiles = 16,
+
+        .seed = 0x7F,
+
+        .colors = {
+            axiom::hsv_color(5.85, 0.3, 0.2),
+            axiom::hsv_color(5.85, 0.3, 0.19),
+            axiom::hsv_color(5.85, 0.3, 0.35),
+            axiom::hsv_color(5.85, 0.3, 0.35)
+        }
     };
     make_world(params);
 
@@ -777,6 +905,19 @@ int main(int argc, char **argv) {
 
             glEnable(GL_DEPTH_TEST);
         }
+    };
+
+    
+    auto vrender_callback = [&window, camera_entity_vis](axiom::render_target& target) {
+        target.framebuffer.bind();
+        target.framebuffer.clear(vec4(0.0f, 0.0f, 0.0f, 1.0f));
+
+        axiom::camera3d& camera = axiom::ecs.get_component<axiom::camera3d>(camera_entity_vis);
+        camera.aspect = target.size;
+
+        visualizer_render(camera_entity_vis, target.framebuffer);
+
+        render_grid(camera_entity_vis, target.framebuffer);
     };
 
     auto widget_callback = [camera_entity, &window](axiom::render_widget *self) {
@@ -955,6 +1096,80 @@ int main(int argc, char **argv) {
             }
         }
     };
+    
+    
+    auto visualizer_callback = [camera_entity_vis, &window](axiom::render_widget *self) {
+        static bool movement_capture = false;
+        static float zoom = sqrt(2.0f * 1.5f);
+        static float angle_x = 0.0f;
+        static float angle_y = 0.0f;
+        
+        axiom::transform3d& camera_transform = axiom::ecs.get_component<axiom::transform3d>(camera_entity_vis);
+        axiom::ui_system& ui_system = axiom::ecs.get_system<axiom::ui_system>();
+
+        if(ui_system.click_capture == self->self) {
+            if(movement_capture == false) {
+                ui_system.window->disable_cursor();
+                movement_capture = true;
+            }
+        } else {
+            if(movement_capture) ui_system.window->show_cursor();
+            movement_capture = false;
+        }
+
+        if(ui_system.hover_capture == self->self) {
+            if(ui_system.window->scroll_delta != 0.0f) {
+                zoom *= pow(2, -ui_system.window->scroll_delta * 0.5f);
+            }
+        }
+
+        mat3 rot_mat = glm::identity<mat3>();
+
+        if(ui_system.click_capture == self->self) {
+            if(movement_capture) {
+                glm::vec3 raw_movement = {0, 0, 0};
+                float rotate_value = 0.0f;
+
+                vec3 rotate = vec3(0.0f);
+                rotate.x = -ui_system.window->cursor_delta.x;
+                rotate.y = -ui_system.window->cursor_delta.y;
+
+                if(ui_system.window->input_map[axiom::input_code::KEY_Q]) {
+                    rotate.z -= 1;
+                }
+                if(ui_system.window->input_map[axiom::input_code::KEY_E]) {
+                    rotate.z += 1;
+                }
+
+                //
+
+                float len = length(raw_movement);
+                if(len != 0.0f) raw_movement = glm::normalize(raw_movement);
+                
+                glm::vec3 translation_vec = camera_transform.orientation * raw_movement;
+                
+                vec3 dir = -camera_transform.orientation[2];
+                vec3 u = camera_transform.orientation[1];
+                angle_x += float(2 * axiom::pi * (1.0 / 1024) * rotate.x);
+                angle_y += float(2 * axiom::pi * (1.0 / 1024) * rotate.y);
+            }
+        }
+
+        angle_y = glm::clamp(angle_y, axiom::pi * -0.49f, axiom::pi * 0.49f);
+        angle_x = glm::mod(angle_x, axiom::pi * 2.0f);
+
+        //
+
+        vec3 new_pos = vec3(cos(angle_x) * cos(angle_y), sin(angle_x) * cos(angle_y), sin(angle_y));
+
+        vec3 up = vec3(0.0f, 0.0f, 1.0f);
+        up = normalize(up - new_pos * dot(up, new_pos));
+
+        vec3 right = cross(up, new_pos);
+        
+        camera_transform.orientation = mat3(right, up, new_pos);
+        camera_transform.position = new_pos * zoom;
+    };
 
     //
 
@@ -965,6 +1180,13 @@ int main(int argc, char **argv) {
     attachment = {axiom::texture_attachment::COLOR0, axiom::texture_attachment::COLOR1, axiom::texture_attachment::COLOR2, axiom::texture_attachment::DEPTH};
     axiom::render_target* rt = axiom::render_target::create(
         target_callback,
+        ivec2(512),
+        format,
+        attachment, {}
+    );
+    
+    axiom::render_target* rtv = axiom::render_target::create(
+        vrender_callback,
         ivec2(512),
         format,
         attachment, {}
@@ -1330,6 +1552,20 @@ int main(int argc, char **argv) {
                                     axiom::column_widget::insert();
 
                                     axiom::text_widget::insert(lipsum, axiom::text_alignment::LEFT);
+                                }
+                            },
+                            {
+                                "Visualizer", 
+                                {},
+                                [rtv, visualizer_callback]() {
+                                    ivec2 size = uvec2(500, 500);
+                                    ivec2 pos = (ui_system.window->size - size) / 2;
+
+                                    ui_system.input_reset();
+                                    ui_system.position(axiom::position_mode::TOP_LEFT);
+                                    axiom::window_widget::insert("Visualizer", size, pos, axiom::color_red);
+                                    
+                                    axiom::render_widget::insert(rtv, 0, visualizer_callback);
                                 }
                             }
                         }
