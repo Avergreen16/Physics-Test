@@ -67,7 +67,101 @@ float line_ray(vec3 origin_line, vec3 dir_line, vec3 origin_plane, vec3 normal_p
     return -dot_origin / dot_norm;
 }
 
+float cross_2d(vec2 a, vec2 b) {
+    return a.x * b.y - a.y * b.x;
+}
+
+float orient(vec2 a, vec2 b, vec2 c) {
+    return cross_2d(b - a, c - a);
+}
+
+bool segments_intersect(vec2 a, vec2 b, vec2 c, vec2 d) {
+    float o1 = orient(a, b, c);
+    float o2 = orient(a, b, d);
+    float o3 = orient(c, d, a);
+    float o4 = orient(c, d, b);
+
+    return (o1 * o2 < 0.0f) && (o3 * o4 < 0.0f);
+}
+
+int is_hourglass(vec2 a, vec2 b, vec2 c, vec2 d) {
+    if(segments_intersect(a, b, c, d)) return 1;
+    if(segments_intersect(b, c, d, a)) return 2;
+    return 0;       
+}
+
+vec2 intersect(vec2 v1, vec2 v2, vec2 v3, vec2 v4, float& t) {
+    t = ((v1.x - v3.x) * (v3.y - v4.y) - (v1.y - v3.y) * (v3.x - v4.x)) / ((v1.x - v2.x) * (v3.y - v4.y) - (v1.y - v2.y) * (v3.x - v4.x));
+
+    return v1 + t * (v2 - v1);
+}
+
+vec3 barycentric(vec2 a, vec2 b, vec2 c, vec2 d) {
+    float denom = cross_2d(a - c, b - c);
+
+    float v0 = cross_2d(d - c, b - c) / denom;
+    float v1 = cross_2d(a - c, d - c) / denom;
+    float v2 = 1.0f - v0 - v1;
+
+    return vec3{v0, v1, v2};
+};
+
+vec4 mean_value(vec2 a, vec2 b, vec2 c, vec2 d, vec2 e) {
+    vec2 diff_a = a - e;
+    vec2 diff_b = b - e;
+    vec2 diff_c = c - e;
+    vec2 diff_d = d - e;
+
+    float ra = length(a - e);
+    float rb = length(b - e);
+    float rc = length(c - e);
+    float rd = length(d - e);
+
+    float tab = cross_2d(diff_a, diff_b) / (ra * rb + dot(diff_a, diff_b));
+    float tbc = cross_2d(diff_b, diff_c) / (rb * rc + dot(diff_b, diff_c));
+    float tcd = cross_2d(diff_c, diff_d) / (rc * rd + dot(diff_c, diff_d));
+    float tda = cross_2d(diff_d, diff_a) / (rd * ra + dot(diff_d, diff_a));
+
+    float wa = (tda + tab) / ra;
+    float wb = (tab + tbc) / rb;
+    float wc = (tbc + tcd) / rc;
+    float wd = (tcd + tda) / rd;
+
+    float sum = wa + wb + wc + wd;
+
+    return vec4(wa / sum, wb / sum, wc / sum, wd / sum);
+};
+
+vec4 interpolate(vec2 v1, vec2 v2, vec2 v3, vec2 v4, vec2 e) {
+    return mean_value(v1, v2, v3, v4, e);
+}
+
+vec2 newton(vec2 a, vec2 b, vec2 c, vec2 d, vec2 p) {
+    vec2 guess = vec2(0.25f, 0.25f);
+
+    for(int i = 0; i < 12; ++i) {
+        vec2 q = glm::mix(glm::mix(a, b, guess.x), glm::mix(c, d, guess.x), guess.y);
+        vec2 error = q - p;
+
+        vec2 dQdu = (1 - guess.y) * (b - a) + guess.y * (d - c);
+        vec2 dQdv = (1 - guess.x) * (c - a) + guess.x * (d - b);
+
+        float det = cross_2d(dQdu, dQdv);
+
+        if(std::abs(det) < 1e-8) break;
+
+        float du = cross_2d(error, dQdv) / det;
+        float dv = cross_2d(dQdu, error) / det;
+
+        guess.x -= du;
+        guess.y -= dv;
+    }
+
+    return guess;
+}
+
 axiom::texture_asset terrain_generator::render() {
+    size = 256;
     axiom::random32 rand(0xFF1);
 
     struct voronoi_cell {
@@ -221,13 +315,18 @@ axiom::texture_asset terrain_generator::render() {
     }
 
     for(plate_node& node : nodes) {
+        std::set<uint> p;
         for(uint plate_i : node.plates) {
-            tectonic_plate& plate = plates[plate_i];
+            uint pp = cells[plate_i].plate;
+            if(!p.contains(pp)) {
+                tectonic_plate& plate = plates[cells[plate_i].plate];
 
-            vec3 dir = normalize(node.position - plate.origin);
-            vec3 move = cross(node.position, plate.rotation);
+                vec3 dir = normalize(node.position - plate.origin);
+                vec3 move = cross(node.position, plate.rotation);
 
-            node.convergence += dot(move, dir);
+                node.convergence += dot(move, dir) * 0.5f;
+            }
+            p.emplace(pp);
         }
         
         float divergent_time = abs(axiom::noise_gen::perlin_noise(node.position, scale, 1, 0xF1F));
@@ -300,332 +399,275 @@ axiom::texture_asset terrain_generator::render() {
         */
     }
 
+    uint flag = 0;
+
+    struct tectonic_quad {
+        float conv0;
+        float conv1;
+        vec3 v0;
+        vec3 v1;
+        vec3 d0;
+        vec3 d1;
+    };
+
+    std::vector<tectonic_quad> quads;
+
+    for(uint connection : connections) {
+        uint n0 = connection & 0xFFFF;
+        uint n1 = connection >> 16;
+
+        auto& node0 = nodes[node_mapping[n0]];
+        auto& node1 = nodes[node_mapping[n1]];
+
+        //
+        vec3 v0 = node0.position;
+        vec3 v1 = node1.position;
+
+        vec3 normal = normalize(v0 + v1);
+
+        float len01 = length(v1 - v0);
+        vec3 norm01 = normalize(v1 - v0);
+
+        //
+        
+        vec3 vel0a = vec3(0.0f);
+        vec3 vel0b = vec3(0.0f);
+        vec3 vel1a = vec3(0.0f);
+        vec3 vel1b = vec3(0.0f);
+
+        //std::cout << node0.plates.size() << " " << cells[node1.plates.size() << " ";
+
+        for(int i = 0; i < node0.neighbors.size(); ++i) {
+            if(node0.neighbors[i] == n1) {
+                if(node0.neighbors.size() == 2) {
+                    std::vector<uint> nplates = node0.plates;
+
+                    if(nplates.size() == 3) {
+                        if(dot(cross(nodes[node_mapping[node0.neighbors[0]]].position - node0.position, nodes[node_mapping[node0.neighbors[1]]].position - node0.position), node0.position) < 0.0f) {
+                            nplates = {nplates[2], nplates[0], nplates[1], nplates[2]};
+                        } else nplates = {nplates[2], nplates[0], nplates[0], nplates[1]};
+                    } else {
+                        nplates = {nplates[3], nplates[0], nplates[1], nplates[2]};
+                    }
+
+                    auto& plate0 = plates[cells[nplates[i * 2]].plate];
+                    auto& plate1 = plates[cells[nplates[i * 2 + 1]].plate];
+
+                    vec3 v0 = cross(node0.position, plate0.rotation);
+                    vec3 v1 = cross(node0.position, plate1.rotation);
+
+                    vec3 vv = normalize(v0 - v1);
+
+                    vel0a = vv;
+                    vel0b = -vv;
+                } else {
+                    {
+                        /*
+                        auto& cell0 = cells[node0.plates[i]];
+                        auto& cell1 = cells[node0.plates[(i + 1) % node0.plates.size()]];
+                        auto& cell2 = cells[node0.plates[(i + 2) % node0.plates.size()]];
+                        
+                        vel0a = normalize(cell2.position - node0.position);
+                        vel0b = normalize(cell0.position - node0.position);
+                        */
+
+                        auto& plate0 = plates[cells[node0.plates[0]].plate];
+                        auto& plate1 = plates[cells[node0.plates[1]].plate];
+                        auto& plate2 = plates[cells[node0.plates[2]].plate];
+
+                        vec3 v0 = cross(node1.position, plate0.rotation);
+                        vec3 v1 = cross(node1.position, plate1.rotation);
+                        vec3 v2 = cross(node1.position, plate2.rotation);
+
+                        vec3 vv0 = v2 - v0;
+                        vec3 vv1 = v0 - v1;
+                        vec3 vv2 = v1 - v2;
+
+                        if(dot(vv0, vv1) < 0.0f) vv1 = -vv1;
+                        if(dot(vv0, vv2) < 0.0f) vv2 = -vv2;
+
+                        vec3 vv = normalize(vv0 + vv1 + vv2);
+
+                        vel0a = vv;
+                        vel0b = -vv;
+                    }
+                }
+            }
+        }
+        
+        for(int i = 0; i < node1.neighbors.size(); ++i) {
+            if(node1.neighbors[i] == n0) {
+                if(node1.neighbors.size() == 2) {
+                    std::vector<uint> nplates = node1.plates;
+
+                    if(nplates.size() == 3) {
+                        if(dot(cross(nodes[node_mapping[node1.neighbors[0]]].position - node1.position, nodes[node_mapping[node1.neighbors[1]]].position - node1.position), node1.position) < 0.0f) {
+                            nplates = {nplates[2], nplates[0], nplates[1], nplates[2]};
+                        } else nplates = {nplates[2], nplates[0], nplates[0], nplates[1]};
+                    } else {
+                        nplates = {nplates[3], nplates[0], nplates[1], nplates[2]};
+                    }
+
+                    auto& plate0 = plates[cells[nplates[i * 2]].plate];
+                    auto& plate1 = plates[cells[nplates[i * 2 + 1]].plate];
+
+                    vec3 v0 = cross(node1.position, plate0.rotation);
+                    vec3 v1 = cross(node1.position, plate1.rotation);
+
+                    vec3 vv = normalize(v0 - v1);
+
+                    vel1a = -vv;
+                    vel1b = vv;
+                } else {
+                    {
+                        /*
+                        auto& cell0 = cells[node1.plates[i]];
+                        auto& cell1 = cells[node1.plates[(i + 1) % node1.plates.size()]];
+                        auto& cell2 = cells[node1.plates[(i + 2) % node1.plates.size()]];
+                        
+                        vel1a = normalize(cell0.position - node1.position);
+                        vel1b = normalize(cell2.position - node1.position);
+                        */
+
+                        auto& plate0 = plates[cells[node1.plates[0]].plate];
+                        auto& plate1 = plates[cells[node1.plates[1]].plate];
+                        auto& plate2 = plates[cells[node1.plates[2]].plate];
+
+                        vec3 v0 = cross(node1.position, plate0.rotation);
+                        vec3 v1 = cross(node1.position, plate1.rotation);
+                        vec3 v2 = cross(node1.position, plate2.rotation);
+
+                        vec3 vv0 = v2 - v0;
+                        vec3 vv1 = v0 - v1;
+                        vec3 vv2 = v1 - v2;
+
+                        if(dot(vv0, vv1) < 0.0f) vv1 = -vv1;
+                        if(dot(vv0, vv2) < 0.0f) vv2 = -vv2;
+
+                        vec3 vv = normalize(vv0 + vv1 + vv2);
+
+                        vel1a = vv;
+                        vel1b = -vv;
+                    }
+                }
+            }
+        }
+
+        if(node0.neighbors.size() == 3) {
+            if(dot(vel1a, vel0a) < 0.0f || dot(vel1b, vel0b) < 0.0f) {
+                vel0a = -vel0a;
+                vel0b = -vel0b;
+            }
+        }
+        
+        if(node1.neighbors.size() == 3) {
+            if(dot(vel1a, vel0a) < 0.0f || dot(vel1b, vel0b) < 0.0f) {
+                vel1a = -vel1a;
+                vel1b = -vel1b;
+            }
+        }
+        
+        tectonic_quad quad;
+        quad.conv0 = node0.convergence;
+        quad.conv1 = node1.convergence;
+
+        quad.v0 = v0;
+        quad.v1 = v1;
+        quad.d0 = vel0a;
+        quad.d1 = vel1a;
+
+        quads.push_back(quad);
+    }
+
     auto sample_convergence = [&](vec3 pos) {
+        flag = 0;
+
         float convergence = 0.0f;
         float divergence = 0.0f;
 
-        for(uint connection : connections) {
-            uint n0 = connection & 0xFFFF;
-            uint n1 = connection >> 16;
-
-            auto& node0 = nodes[node_mapping[n0]];
-            auto& node1 = nodes[node_mapping[n1]];
-
-            //
-            vec3 v0 = node0.position;
-            vec3 v1 = node1.position;
+        for(auto& quad : quads) {
+            vec3 v0 = quad.v0;
+            vec3 v1 = quad.v1;
+            vec3 vel0a = quad.d0;
+            vec3 vel0b = -quad.d0;
+            vec3 vel1a = quad.d1;
+            vec3 vel1b = -quad.d1;
 
             vec3 normal = normalize(v0 + v1);
 
-            vec3 proj_pos = pos - node0.position;
-            if(dot(pos, normal) > 0.0f) {
-                proj_pos = proj_pos - normal * dot(proj_pos, normal) + v0;
+            if(dot(normal, pos) < 0.0f) continue;
+            
+            mat3 rel_matrix = axiom::rotate_to(normal, vec3(0.0f, 0.0f, 1.0f));
 
-                float len01 = length(v1 - v0);
-                vec3 norm01 = normalize(v1 - v0);
+            vec2 tv0 = (rel_matrix * v0).xy();
+            vec2 tv1 = (rel_matrix * v1).xy();
+            vec2 tpos = (rel_matrix * pos).xy();
 
-                float frac = glm::clamp(dot(proj_pos - v0, norm01), 0.0f, len01);
+            vec2 tvel0a = (rel_matrix * vel0a).xy();
+            vec2 tvel0b = (rel_matrix * vel0b).xy();
+            vec2 tvel1a = (rel_matrix * vel1a).xy();
+            vec2 tvel1b = (rel_matrix * vel1b).xy();
 
-                vec3 diff = norm01 * frac + v0 - proj_pos;
-                float ff = frac / len01;
+            tvel0a = normalize(tvel0a);
+            tvel0b = normalize(tvel0b);
+            tvel1a = normalize(tvel1a);
+            tvel1b = normalize(tvel1b);
 
-                //
-                
-                vec3 direction = vec3(1.0f, 0.0f, 0.0f);
-                
-                vec3 vel0a = vec3(0.0f);
-                vec3 vel0b = vec3(0.0f);
-                vec3 vel1a = vec3(0.0f);
-                vec3 vel1b = vec3(0.0f);
+            //
+            
+            float w = 0.9f;
 
-                //std::cout << node0.plates.size() << " " << cells[node1.plates.size() << " ";
+            auto is_include = [](vec2 a, vec2 b, vec2 c, vec2 d) {
+                vec3 v = barycentric(a, b, c, d);
+                return !(v.x < 0.0f || v.y < 0.0f || v.z < 0.0f);
+            };
 
-                for(int i = 0; i < node0.neighbors.size(); ++i) {
-                    if(node0.neighbors[i] == n1) {
-                        if(node0.neighbors.size() == 2) {
-                            /*
+            vec2 va = tv0 + tvel0a * w;
+            vec2 vb = tv0;
+            vec2 vc = tv0 + tvel0b * w;
+            vec2 vd = tv1 + tvel1a * w;
+            vec2 ve = tv1;
+            vec2 vf = tv1 + tvel1b * w;
 
-                            auto& plate0 = plates[cells[node0.plates[i]].plate];
-                            auto& plate1 = plates[cells[node0.plates[i + 1]].plate];
+            float fa = 1.0f;
+            float fb = 0.0f;
+            float fc = 1.0f;
+            float fd = 1.0f;
+            float fe = 0.0f;
+            float ff = 1.0f;
 
-                            vec3 v0 = cross(node0.position, plate0.rotation);
-                            vec3 v1 = cross(node0.position, plate1.rotation);
+            vec2 tvdir = tv0 - tv1;
 
-                            vec3 vv = v0 - v1;
+            float dist = 1000.0f;
+            float conv = 0.0f;
 
-                            vel0a = vv;
-                            vel0b = -vv;
+            {
+                vec4 is = mean_value(va, vc, vf, vd, tpos);
+                if(is.x >= 0.0f && is.y >= 0.0f && is.z >= 0.0f && is.w >= 0.0f) {
+                    float v1 = is.x + is.w;
+                    float v2 = is.y + is.z;
 
-                            */
+                    dist = glm::min(dist, abs((v1 - v2) * 2.0f));
+                    
+                    float v3 = is.x + is.y;
+                    float v4 = is.z + is.w;
 
-                            std::vector<uint> plates = node0.plates;
-
-                            if(plates.size() == 3) {
-                                if(dot(cross(nodes[node_mapping[node0.neighbors[0]]].position - node0.position, nodes[node_mapping[node0.neighbors[1]]].position - node0.position), node0.position) < 0.0f) {
-                                    plates = {plates[2], plates[0], plates[1], plates[2]};
-                                } else plates = {plates[2], plates[0], plates[0], plates[1]};
-                            } else {
-                                plates = {plates[3], plates[0], plates[1], plates[2]};
-                            }
-
-                            vec3 pos_a = cells[plates[i * 2 + 1]].position;
-                            vec3 pos_b = cells[plates[(i * 2 + 2) % plates.size()]].position;
-
-                            vec3 avg = normalize(pos_a - node0.position) + normalize(pos_b - node0.position);
-                            if(dot(avg, cross(node0.position, node1.position - node0.position)) < 0.0f) avg = -avg;
-                            
-                            //vel0a = normalize(pos_a - node0.position);
-                            //vel0b = normalize(pos_b - node0.position);
-                            vel0a = avg;
-                        } else {
-                            {
-                                auto* plate0 = &plates[cells[node0.plates[(i - 2) % node0.plates.size()]].plate];
-                                auto* plate1 = &plates[cells[node0.plates[(i - 1) % node0.plates.size()]].plate];
-                                auto* plate2 = &plates[cells[node0.plates[i]].plate];
-
-                                vec3 v0 = cross(node0.position, plate0->rotation);
-                                vec3 v1 = cross(node0.position, plate1->rotation);
-                                vec3 v2 = cross(node0.position, plate2->rotation);
-
-                                vel0a = cells[node0.plates[(i - 1) % node0.plates.size()]].position - node0.position;//(v0 - v1) + (v2 - v1);
-                            }
-
-                            {
-                                auto* plate0 = &plates[cells[node0.plates[(i - 1) % node0.plates.size()]].plate];
-                                auto* plate1 = &plates[cells[node0.plates[i]].plate];
-                                auto* plate2 = &plates[cells[node0.plates[(i + 1) % node0.plates.size()]].plate];
-
-                                vec3 v0 = cross(node0.position, plate0->rotation);
-                                vec3 v1 = cross(node0.position, plate1->rotation);
-                                vec3 v2 = cross(node0.position, plate2->rotation);
-
-                                vel0b = cells[node0.plates[i]].position - node0.position;//(v0 - v1) + (v2 - v1);
-                            }
-                        }
-                    }
+                    conv = quad.conv0 * v3 + quad.conv1 * v4;
                 }
-                
-                for(int i = 0; i < node1.neighbors.size(); ++i) {
-                    if(node1.neighbors[i] == n0) {
-                        if(node1.neighbors.size() == 2) {
+            }
+            
+            if(divergence != 10.0f) {
+                if(conv > 0.0f) {
+                    conv = glm::max(0.0f, conv);
 
-                            /*
-                            auto& plate0 = plates[cells[node1.plates[i]].plate];
-                            auto& plate1 = plates[cells[node1.plates[i + 1]].plate];
-
-                            vec3 v0 = cross(node1.position, plate0.rotation);
-                            vec3 v1 = cross(node1.position, plate1.rotation);
-
-                            vec3 vv = v0 - v1;
-
-                            vel1a = vv;
-                            vel1b = -vv;
-                            */
-                            
-                            std::vector<uint> plates = node1.plates;
-
-                            if(plates.size() == 3) {
-                                if(dot(cross(nodes[node_mapping[node1.neighbors[0]]].position - node1.position, nodes[node_mapping[node1.neighbors[1]]].position - node1.position), node1.position) < 0.0f) {
-                                    plates = {plates[2], plates[0], plates[1], plates[2]};
-                                } else plates = {plates[2], plates[0], plates[0], plates[1]};
-                            } else {
-                                plates = {plates[3], plates[0], plates[1], plates[2]};
-                            }
-
-                            vec3 pos_a = cells[plates[i * 2 + 1]].position;
-                            vec3 pos_b = cells[plates[(i * 2 + 2) % plates.size()]].position;
-
-                            vec3 avg = normalize(pos_a - node1.position) + normalize(pos_b - node1.position);
-                            if(dot(avg, cross(node1.position, node0.position - node1.position)) < 0.0f) avg = -avg;
-
-                            vel1a = avg;
-                            
-                            //vel1a = normalize(pos_a - node1.position);
-                            //vel1b = normalize(pos_b - node1.position);
-                        } else {
-                            {
-                                auto* plate0 = &plates[cells[node1.plates[((i - 2) % node1.plates.size())]].plate];
-                                auto* plate1 = &plates[cells[node1.plates[((i - 1) % node1.plates.size())]].plate];
-                                auto* plate2 = &plates[cells[node1.plates[i]].plate];
-
-                                vec3 v0 = cross(node1.position, plate0->rotation);
-                                vec3 v1 = cross(node1.position, plate1->rotation);
-                                vec3 v2 = cross(node1.position, plate2->rotation);
-
-                                vel1a = cells[node1.plates[(i - 1) % node1.plates.size()]].position - node1.position;//(v0 - v1) + (v2 - v1);
-                            }
-
-                            {
-
-                                auto* plate0 = &plates[cells[node1.plates[(i - 1) % node1.plates.size()]].plate];
-                                auto* plate1 = &plates[cells[node1.plates[i]].plate];
-                                auto* plate2 = &plates[cells[node1.plates[(i + 1) % node1.plates.size()]].plate];
-
-                                vec3 v0 = cross(node1.position, plate0->rotation);
-                                vec3 v1 = cross(node1.position, plate1->rotation);
-                                vec3 v2 = cross(node1.position, plate2->rotation);
-
-                                vel1b = cells[node1.plates[i]].position - node1.position;//(v0 - v1) + (v2 - v1);
-                            }
-                        }
-                    }
-                }
-
-                /*
-                if(dot(vel0a, vel1a) < 0.0f) vel1a = -vel1a;
-                if(dot(vel0b, vel1b) < 0.0f) vel1b = -vel1b;
-                if(dot(vel0a, vel0b) > 0.0f) {
-                    vel0b = -vel0b;
-                    vel1b = -vel1b;
-                }
-                */
-
-                if(length(vel0a) != 0.0f) vel0a = normalize(vel0a);
-                if(length(vel0b) != 0.0f) vel0b = normalize(vel0b);
-                if(length(vel1a) != 0.0f) vel1a = normalize(vel1a);
-                if(length(vel1b) != 0.0f) vel1b = normalize(vel1b);
-
-                mat3 rel_matrix = axiom::rotate_to(normal, vec3(0.0f, 0.0f, 1.0f));
-
-                vec2 tv0 = (rel_matrix * v0).xy();
-                vec2 tv1 = (rel_matrix * v1).xy();
-                vec2 tpos = (rel_matrix * pos).xy();
-
-                vec2 tvel0a = (rel_matrix * vel0a).xy();
-                vec2 tvel0b = (rel_matrix * vel0b).xy();
-                vec2 tvel1a = (rel_matrix * vel1a).xy();
-                vec2 tvel1b = (rel_matrix * vel1b).xy();
-
-
-                vec2 tvel0;
-                vec2 tvel1;
-
-                vec2 norm_tn = vec2(tv0.y - tv1.y, -(tv0.x - tv1.x));
-                if(dot(norm_tn, tvel0a) < 0.0f) norm_tn = -norm_tn;
-
-                if(dot(norm_tn, tpos - tv1) > 0.0f) {
-                    tvel0 = tvel0a;
-                    tvel1 = tvel1a;
+                    float factor = glm::smoothstep(abs(conv), 0.0f, dist) * glm::abs(conv);
+                    convergence = glm::max(factor, convergence);
                 } else {
-                    tvel0 = tvel0b;
-                    tvel1 = tvel1b;
+                    conv = glm::min(0.0f, conv);
+
+                    float factor = glm::smoothstep(abs(conv), 0.0f, dist) * glm::abs(conv);
+                    divergence = glm::max(factor, divergence);
                 }
-                
-                vec2 norm_tvel0 = vec2(tvel0.y, -tvel0.x);
-                vec2 norm_tvel1 = vec2(tvel1.y, -tvel1.x);
-
-                float dist = 1000.0f;
-                if((dot(norm_tvel0, tpos - tv0) < 0) != (dot(norm_tvel1, tpos - tv1) < 0)) {
-                    vec2 ca = tv0;
-                    vec2 cb = tv1;
-                    vec2 cc = tv0 + tvel0 * 0.15f;
-                    vec2 cd = tv1 + tvel1 * 0.15f;
-
-                    float denom = (ca.x - cc.x) * (cb.y - cc.y) - (ca.y - cc.y) * (cb.x - cc.x);
-                    float bca0 = ((ca.x - cc.x) * (tpos.y - cc.y) - (ca.y - cc.y) * (tpos.x - cc.x)) / denom;
-                    float bcb0 = ((tpos.x - cc.x) * (cb.y - cc.y) - (tpos.y - cc.y) * (cb.x - cc.x)) / denom;
-                    float bcc0 = 1.0f - bca0 - bcb0;
-                    float bcd0 = 0.0f;
-
-                    if(bca0 < 0.0f || bcb0 < 0.0f || bcc0 < 0.0f) {
-                        denom = (cd.x - cc.x) * (cb.y - cc.y) - (cd.y - cc.y) * (cb.x - cc.x);
-                        bca0 = 0.0f;
-                        bcd0 = ((tpos.x - cc.x) * (cb.y - cc.y) - (tpos.y - cc.y) * (cb.x - cc.x)) / denom;
-                        bcb0 = ((cd.x - cc.x) * (tpos.y - cc.y) - (cd.y - cc.y) * (tpos.x - cc.x)) / denom;
-                        bcc0 = 1.0f - bcb0 - bcd0;
-                        if(bcd0 < 0.0f || bcb0 < 0.0f || bcc0 < 0.0f) {
-
-                        } else {
-                            dist = 1.0f - bcb0;
-                        }
-                    } else {
-                        dist = bcc0;
-                    }
-                }
-
-                frac /= len01;
-                float conv = 1.0f;//glm::mix(node0.convergence, node1.convergence, frac) / 3.0f;// * factor;
-
-                /*
-                if(length(diff) < 0.01f) {
-                    if(ff < 0.5f) {
-                        if(node0.neighbors.size() == 2) divergence = 10.0f;
-                        else convergence = 10.0f;
-                    } else {
-                        if(node1.neighbors.size() == 2) divergence = 10.0f;
-                        else convergence = 10.0f;
-                    }
-                }
-                */
-                if(length(diff) < 0.005f) {
-                    divergence = 10.0f;
-                }
-
-                float len = 0.05f;
-
-                if(node0.neighbors.size()) {
-                    vec3 n = normalize(vel0a - normalize(node0.position) * dot(vel0a, normalize(node0.position)));
-
-
-                    vec3 npos = pos - normalize(node0.position) * dot(pos - node0.position, normalize(node0.position));
-
-                    vec3 offset = npos - node0.position;
-                    float closest_pt = dot(offset, n);
-                    if(length(node0.position + closest_pt * n - npos) < 0.005 && closest_pt > 0.0f && closest_pt < len) {
-                        convergence = 10.0f;
-                    }
-                    
-                    n = normalize(vel0b - normalize(node0.position) * dot(vel0b, normalize(node0.position)));
-
-                    npos = pos - normalize(node0.position) * dot(pos - node0.position, normalize(node0.position));
-
-                    offset = npos - node0.position;
-                    closest_pt = dot(offset, n);
-                    if(length(node0.position + closest_pt * n - npos) < 0.005 && closest_pt > 0.0f && closest_pt < len) {
-                        convergence = 10.0f;
-                    }
-                }
-
-                if(convergence == 10.0f) divergence = 0.0f;
-                
-                if(node1.neighbors.size()) {
-                    vec3 n = normalize(vel1a - normalize(node1.position) * dot(vel1a, normalize(node1.position)));
-
-
-                    vec3 npos = pos - normalize(node1.position) * dot(pos - node1.position, normalize(node1.position));
-
-                    vec3 offset = npos - node1.position;
-                    float closest_pt = dot(offset, n);
-                    if(length(node1.position + closest_pt * n - npos) < 0.005 && closest_pt > 0.0f && closest_pt < len) {
-                        convergence = 10.0f;
-                    }
-                    
-                    n = normalize(vel1b - normalize(node1.position) * dot(vel1b, normalize(node1.position)));
-
-                    npos = pos - normalize(node1.position) * dot(pos - node1.position, normalize(node1.position));
-
-                    offset = npos - node1.position;
-                    closest_pt = dot(offset, n);
-                    if(length(node1.position + closest_pt * n - npos) < 0.005 && closest_pt > 0.0f && closest_pt < len) {
-                        convergence = 10.0f;
-                    }
-                }
-                
-                /*
-                if(node0.neighbors.size() == 3 || node1.neighbors.size() == 3) {
-                    if(conv > 0.0f) {
-                        conv = glm::max(0.0f, conv);
-
-                        float factor = glm::smoothstep(abs(conv), 0.0f, dist) * glm::abs(conv);
-                        convergence = glm::max(factor, convergence);
-                    } else {
-                        conv = glm::min(0.0f, conv);
-
-                        float factor = glm::smoothstep(abs(conv), 0.0f, dist) * glm::abs(conv);
-                        divergence = glm::max(factor, divergence);
-                    }
-                }
-                */
             }
         }
 
@@ -647,11 +689,34 @@ axiom::texture_asset terrain_generator::render() {
                 pos = orientations[f] * pos;
 
                 vec3 offset = {axiom::noise_gen::perlin_noise(pos, scale * 0.05f, 3, 0xFF5), axiom::noise_gen::perlin_noise(pos, scale * 0.05f, 3, 0xF61), axiom::noise_gen::perlin_noise(pos, scale * 0.05f, 3, 0x105)};
-                //pos += offset * 0.1f;
                 
                 pos = normalize(pos);
+                pos += offset * 0.1f;
 
                 auto convs = sample_convergence(pos);
+
+                /*
+                vec3 center = vec3(1.0f, 0.0f, 0.0f);
+
+                vec2 norm = pos.yz();
+
+                vec2 pa = vec2(-0.25f, -0.5f);
+                vec2 pb = vec2(0.5f, -0.25f);
+                vec2 pc = vec2(-0.75f, 0.5f);
+                vec2 pd = vec2(0.5f, 0.5f);
+
+                vec4 uv = mean_value(pa, pb, pc, pd, norm);
+
+                vec4 color = vec4(0.0f, 0.0f, 1.0f, 1.0f);
+
+                if(uv.x >= 0.0f && uv.y >= 0.0f && uv.z >= 0.0f && uv.w >= 0.0f) {
+                    vec4 color_a = vec4(1.0f, 0.0f, 0.0f, 1.0f);
+                    vec4 color_b = vec4(1.0f, 1.0f, 0.0f, 1.0f);
+                    vec4 color_c = vec4(0.0f, 1.0f, 0.0f, 1.0f);
+                    vec4 color_d = vec4(0.0f, 1.0f, 1.0f, 1.0f);
+                    color = color_a * uv.x + color_b * uv.y + color_c * uv.z + color_d * uv.w;
+                }
+                */
 
                 /*
                 convs[0] = 0.0f;
@@ -674,6 +739,22 @@ axiom::texture_asset terrain_generator::render() {
                 } else {
                     color = glm::mix(vec4(0.0f, 0.0f, 1.0f, 1.0f), vec4(1.0f, 1.0f, 0.0f, 1.0f), glm::clamp(abs(scaled_diff), 0.0f, 1.0f));
                 }
+                
+                /*
+                if(abs(scaled_diff) < 0.15f || flag == 2 || flag == 3) {
+                    if(flag == 2) color = vec4(1.0f, 1.0f, 0.0f, 1.0f);
+                    else if(flag == 3) color = vec4(0.0f, 1.0f, 0.0f, 1.0f);
+                    else if(flag == 4) color = vec4(0.0f, 1.0f, 1.0f, 1.0f);
+                    else if(flag == 10) color = vec4(1.0f, 1.0f, 1.0f, 1.0f);
+                }
+                
+                if(flag == 0) color = vec4(0.5f, 0.5f, 0.5f, 1.0f);
+                else if(flag == 1) color = vec4(1.0f, 0.0f, 0.0f, 1.0f);
+                else if(flag == 2) color = vec4(1.0f, 1.0f, 0.0f, 1.0f);
+                else if(flag == 3) color = vec4(0.0f, 1.0f, 0.0f, 1.0f);
+                else if(flag == 4) color = vec4(0.0f, 1.0f, 1.0f, 1.0f);
+                else if(flag == 10) color = vec4(1.0f, 1.0f, 1.0f, 1.0f);
+                */
 
                 face[(y * size + x) * 4] = color.x * 0xFF;
                 face[(y * size + x) * 4 + 1] = color.y * 0xFF;
