@@ -42,7 +42,9 @@ struct terrain_generator {
     int size = 256;
 
     std::vector<terrain_pixel> terrain_pixels;
-    std::vector<mat3> orientations = get_orientations();
+    std::vector<mat3> orientations;
+    std::vector<mat2> rotations;
+    std::vector<uint> edges;
 
     int get_index(ivec3 pos);
 
