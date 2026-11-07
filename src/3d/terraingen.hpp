@@ -42,11 +42,14 @@ struct terrain_generator {
     int size = 256;
 
     std::vector<terrain_pixel> terrain_pixels;
+    std::vector<float> heights;
     std::vector<mat3> orientations;
     std::vector<mat2> rotations;
     std::vector<uint> edges;
 
     int get_index(ivec3 pos);
+    std::vector<float> get_heights();
+    std::array<ivec3, 2> get_neighbor(ivec3 input, ivec2 offset);
 
     void init();
     axiom::texture_asset render();

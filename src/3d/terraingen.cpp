@@ -6,6 +6,87 @@
 #include "stb_image.h"
 #include "stb_image_write.h"
 
+std::array<ivec3, 2> terrain_generator::get_neighbor(ivec3 input, ivec2 offset) {
+    ivec2 npos = input.xy() + offset;
+    uint f = input.z;
+
+    ivec3 retx = ivec3(0, 0, -1);
+    ivec3 rety = ivec3(0, 0, -1);
+
+    if(npos.x < 0) {
+        ivec2 nnpos = npos;
+        nnpos.y = glm::clamp(nnpos.y, 0, size - 1);
+
+        vec2 nn = (nnpos + size) % size;
+        nn += 0.5f;
+        nn -= size * 0.5f;
+
+        uint dst = edges[f * 4];
+
+        mat2 rotation = rotations[f * 4];
+        nnpos = rotation * nn;
+        nnpos += size * 0.5f;
+
+        retx = {nnpos, dst};
+    } else if(npos.x >= size) {
+        ivec2 nnpos = npos;
+        nnpos.y = glm::clamp(nnpos.y, 0, size - 1);
+        
+        vec2 nn = (nnpos + size) % size;
+        nn += 0.5f;
+        nn -= size * 0.5f;
+
+        uint dst = edges[f * 4 + 1];
+
+        mat2 rotation = rotations[f * 4 + 1];
+        nnpos = rotation * nn;
+        nnpos += size * 0.5f;
+
+        retx = {nnpos, dst};
+    }
+    
+    if(npos.y < 0) {
+        ivec2 nnpos = npos;
+        nnpos.x = glm::clamp(nnpos.x, 0, size - 1);
+        
+        vec2 nn = (nnpos + size) % size;
+        nn += 0.5f;
+        nn -= size * 0.5f;
+
+        uint dst = edges[f * 4 + 2];
+
+        mat2 rotation = rotations[f * 4 + 2];
+        nnpos = rotation * nn;
+        nnpos += size * 0.5f;
+
+        rety = {nnpos, dst};
+    } else if(npos.y >= size) {
+        ivec2 nnpos = npos;
+        nnpos.x = glm::clamp(nnpos.x, 0, size - 1);
+        
+        vec2 nn = (nnpos + size) % size;
+        nn += 0.5f;
+        nn -= size * 0.5f;
+
+        uint dst = edges[f * 4 + 3];
+
+        mat2 rotation = rotations[f * 4 + 3];
+        nnpos = rotation * nn;
+        nnpos += size * 0.5f;
+
+        rety = {nnpos, dst};
+    }
+
+    if(retx.z != -1) {
+        return {retx, rety};
+    }
+    if(rety.z != -1) {
+        return {rety, retx};
+    }
+
+    return {ivec3(npos, f), rety};
+}
+
 std::vector<mat3> get_orientations() {
     std::vector<mat3> ret = {
         mat3{vec3(0, 1, 0), vec3(0, 0, 1), vec3(1, 0, 0)},
@@ -110,6 +191,15 @@ float line_ray(vec3 origin_line, vec3 dir_line, vec3 origin_plane, vec3 normal_p
     return -dot_origin / dot_norm;
 }
 
+float line_dist(vec2 point, vec2 a, vec2 b) {
+    vec2 diff = point - a;
+    vec2 line = b - a;
+
+    vec2 closest = glm::clamp(dot(normalize(line), diff), 0.0f, length(line)) * normalize(line) + a;
+
+    return length(closest - point);
+}
+
 float orient(vec2 a, vec2 b, vec2 c) {
     return cross_2d(b - a, c - a);
 }
@@ -200,8 +290,8 @@ vec2 newton(vec2 a, vec2 b, vec2 c, vec2 d, vec2 p) {
 }
 
 axiom::texture_asset terrain_generator::render() {
-    size = 128;
-    axiom::random32 rand(0x1B);
+    size = 0xC0;
+    axiom::random32 rand(0x1F);
 
     struct voronoi_cell {
         vec3 position;
@@ -215,6 +305,7 @@ axiom::texture_asset terrain_generator::render() {
         vec3 origin;
         vec3 craton;
         vec3 rotation;
+        float time = 1.0f;
         float weight;
         float continental;
     };
@@ -230,18 +321,18 @@ axiom::texture_asset terrain_generator::render() {
     std::vector<mountain_range> ranges;
     
     uint num_cells = 500;
-    uint num_plates = 25;
-
-    uint num_ranges = 5;
+    uint num_plates = 12;
 
     for(int i = 0; i < num_plates; ++i) {
         tectonic_plate plate;
 
         plate.origin = rand.unit_vector();
         plate.weight = rand() * 0.6 + 0.4;
-        plate.rotation = rand.unit_vector();
-        plate.continental = rand() - 0.2f;
-        plate.craton = normalize(plate.origin + rand.unit_vector() * plate.weight * 0.35f);
+        plate.rotation = rand.unit_vector() * 0.5f;
+        plate.continental = rand();
+
+        vec3 direction = cross(plate.origin, plate.rotation);
+        plate.craton = normalize(plate.origin + direction * plate.weight * rand());
 
         plates.push_back(plate);
     }
@@ -332,6 +423,7 @@ axiom::texture_asset terrain_generator::render() {
     std::vector<plate_node> nodes;
     std::unordered_map<uint, uint> node_mapping;
     std::vector<uint> connections;
+    std::vector<uint> connection_cells;
     
     for(auto& [i, vs] : vvs) {
         uint e0 = i & 0xFFFF;
@@ -372,6 +464,7 @@ axiom::texture_asset terrain_generator::render() {
         if(cell0.plate != cell1.plate) {
             uint connection = (glm::max(i0, i1) << 16 | glm::min(i0, i1));
             connections.push_back(connection);
+            connection_cells.push_back(i);
             
             nodes[node_mapping[i0]].neighbors.push_back(i1);
             nodes[node_mapping[i1]].neighbors.push_back(i0);
@@ -388,7 +481,10 @@ axiom::texture_asset terrain_generator::render() {
                 vec3 dir = normalize(node.position - plate.origin);
                 vec3 move = cross(node.position, plate.rotation);
 
-                node.convergence += dot(move, dir);
+                float conv = dot(move, dir);
+                if(conv < 0.0f) conv *= plate.time * 1.75f;
+
+                node.convergence += conv;
             }
             p.emplace(pp);
         }
@@ -467,6 +563,9 @@ axiom::texture_asset terrain_generator::render() {
     struct tectonic_quad {
         float conv0;
         float conv1;
+        uint plate0;
+        uint plate1;
+
         vec3 v0;
         vec3 v1;
         vec3 d0;
@@ -475,8 +574,14 @@ axiom::texture_asset terrain_generator::render() {
 
     std::vector<tectonic_quad> quads;
     
-    for(uint i = 0; i < 50; ++i) {
+    float num_ranges = 100;
+
+    for(uint i = 0; i < num_ranges; ++i) {
         uint origin;
+        uint plate;
+
+        const uint num_tries = 20;
+        uint iter = 0;
 
         while(true) {
             uint r = rand.next() % node_mapping.size();
@@ -485,10 +590,19 @@ axiom::texture_asset terrain_generator::render() {
             
             bool is_edge = false;
             
-            origin = r;
+            if(node.neighbors.size() == 0) {
+                plate = cells[node.plates[0]].plate;
 
-            break;
+                if(plates[plate].continental > 0.0f) {
+                    origin = r;
+                    break;
+                }
+            }
+
+            ++iter;
+            if(iter > num_tries) break;
         }
+        if(iter > num_tries) continue;
 
         vec3 direction = rand.unit_vector();
         direction = normalize(direction - nodes[node_mapping[origin]].position * dot(direction, nodes[node_mapping[origin]].position));
@@ -498,7 +612,10 @@ axiom::texture_asset terrain_generator::render() {
 
         uint prev = origin;
 
-        for(int i = 0; i < 20; ++i) {
+        float range_length = rand.next() % 10 + 5;
+        float range_weight = rand() * 0.35f + 0.5f;
+
+        for(int i = 0; i < range_length; ++i) {
             uint next;
 
             float max_dot = -axiom::max_float;
@@ -517,13 +634,23 @@ axiom::texture_asset terrain_generator::render() {
             vec3 v0 = nodes[node_mapping[prev]].position;
             vec3 v1 = nodes[node_mapping[n]].position;
 
+            bool esc = true;
+
+            for(int i = 0; i < nodes[node_mapping[n]].plates.size(); ++i) {
+                if(cells[nodes[node_mapping[n]].plates[i]].plate == plate) {
+                    esc = false;
+                    break;
+                }
+            }
+            if(esc) break;
+
             prev = n;
 
             tectonic_quad quad;
-            quad.conv0 = 1.0f - abs((float(i) / 21) - 0.5) * 2.0f + 0.001f;
-            quad.conv1 = 1.0f - abs((float(i + 1) / 21) - 0.5) * 2.0f + 0.001f;
-
-            std::cout << quad.conv0 << " " << quad.conv1 << "\n";
+            quad.conv0 = range_weight - abs((float(i) / (range_length + 1)) - 0.5) * 2.0f * range_weight;
+            quad.conv1 = range_weight - abs((float(i + 1) / (range_length + 1)) - 0.5) * 2.0f * range_weight;
+            quad.plate0 = plate;
+            quad.plate1 = plate;
  
             quad.v0 = v0;
             quad.v1 = v1;
@@ -536,9 +663,15 @@ axiom::texture_asset terrain_generator::render() {
 
     uint flag = 0;
 
+    uint ctr = 0;
     for(uint connection : connections) {
         uint n0 = connection & 0xFFFF;
         uint n1 = connection >> 16;
+
+        uint connection_cell = connection_cells[ctr];
+        uint c0 = connection_cell & 0xFFFF;
+        uint c1 = connection_cell >> 16;
+        ++ctr;
 
         auto& node0 = nodes[node_mapping[n0]];
         auto& node1 = nodes[node_mapping[n1]];
@@ -597,9 +730,9 @@ axiom::texture_asset terrain_generator::render() {
                         auto& plate1 = plates[cells[node0.plates[1]].plate];
                         auto& plate2 = plates[cells[node0.plates[2]].plate];
 
-                        vec3 v0 = cross(node1.position, plate0.rotation);
-                        vec3 v1 = cross(node1.position, plate1.rotation);
-                        vec3 v2 = cross(node1.position, plate2.rotation);
+                        vec3 v0 = cross(node0.position, plate0.rotation);
+                        vec3 v1 = cross(node0.position, plate1.rotation);
+                        vec3 v2 = cross(node0.position, plate2.rotation);
 
                         vec3 vv0 = v2 - v0;
                         vec3 vv1 = v0 - v1;
@@ -655,6 +788,8 @@ axiom::texture_asset terrain_generator::render() {
                         auto& plate1 = plates[cells[node1.plates[1]].plate];
                         auto& plate2 = plates[cells[node1.plates[2]].plate];
 
+                        //
+
                         vec3 v0 = cross(node1.position, plate0.rotation);
                         vec3 v1 = cross(node1.position, plate1.rotation);
                         vec3 v2 = cross(node1.position, plate2.rotation);
@@ -688,24 +823,40 @@ axiom::texture_asset terrain_generator::render() {
                 vel1b = -vel1b;
             }
         }
+
+        auto& cell0 = cells[c0];
+        auto& cell1 = cells[c1];
         
         tectonic_quad quad;
         quad.conv0 = node0.convergence;
         quad.conv1 = node1.convergence;
+        
+        if(dot(cell1.position - cell0.position, vel0a) > 0.0f) {
+            quad.plate0 = cell0.plate;
+            quad.plate1 = cell1.plate;
+        } else {
+            quad.plate1 = cell0.plate;
+            quad.plate0 = cell1.plate;
+        }
 
         quad.v0 = v0;
         quad.v1 = v1;
-        quad.d0 = normalize(vel0a - v0 * dot(v0, vel0a));
-        quad.d1 = normalize(vel1a - v1 * dot(v1, vel1a));
+        quad.d0 = vel0a;//normalize(vel0a - v0 * dot(v0, vel0a));
+        quad.d1 = vel1a;//normalize(vel1a - v1 * dot(v1, vel1a));
 
         quads.push_back(quad);
     }
 
+    uint b = 0;
+
     auto sample_elev = [&](vec3 pos) {
+        b = 0;
         flag = 0;
 
         float convergence = 0.0f;
         float divergence = 0.0f;
+        float island_ridge = 0.0f;
+        float ocean_ridge = 1000.0f;
 
         for(auto& quad : quads) {
             vec3 v0 = quad.v0;
@@ -713,8 +864,8 @@ axiom::texture_asset terrain_generator::render() {
             vec3 vel0 = quad.d0;
             vec3 vel1 = quad.d1;
 
-            vec3 normal = normalize(v0 + v1);
-
+            vec3 normal = glm::normalize(v0 + v1);
+            
             if(dot(normal, pos) < 0.0f) continue;
 
             mat3 rel_matrix = axiom::rotate_to(normal, vec3(0.0f, 0.0f, 1.0f));
@@ -740,22 +891,37 @@ axiom::texture_asset terrain_generator::render() {
             vec2 vc = tv1 + tvel1 * w;
             vec2 vd = tv1 - tvel1 * w;
 
+            auto& plate0 = plates[quad.plate0];
+            auto& plate1 = plates[quad.plate1];
+
+            bool ridge_direction = plate0.continental < plate1.continental;
+
             float dist = 1000.0f;
+            float signed_dist = 0.0f;
             float conv = 0.0f;
 
             {
                 vec4 is = mean_value(va, vb, vd, vc, tpos);
-                if(is.x >= -0.015f && is.y >= -0.015f && is.z >= -0.015f && is.w >= -0.015f) {
+                if(is.x >= -0.02f && is.y >= -0.02f && is.z >= -0.02f && is.w >= -0.02f) {
                     float v1 = is.x + is.w;
                     float v2 = is.y + is.z;
 
                     dist = glm::min(dist, abs((v1 - v2) * 2.0f));
+                    signed_dist = (v1 - v2) * 2.0f;
+                    if(ridge_direction) signed_dist *= -1.0f;
                     
                     float v3 = is.x + is.y;
                     float v4 = is.z + is.w;
 
                     conv = quad.conv0 * v3 + quad.conv1 * v4;
+
+                    //if(conv < 0.0f) b = glm::max(b, glm::max(1.0f - (1.0f - v3) * 10.0f, 1.0f - (1.0f - v4) * 10.0f));
                 }
+            }
+
+            if(conv < -0.45f) {
+                if(line_dist(tpos, tv0 + tvel0 * conv, tv0 - tvel0 * conv) < 0.005f) b = 1;
+                if(line_dist(tpos, tv1 + tvel1 * conv, tv1 - tvel1 * conv) < 0.005f) b = 1;
             }
             
             if(divergence != 10.0f) {
@@ -764,11 +930,17 @@ axiom::texture_asset terrain_generator::render() {
 
                     float factor = glm::smoothstep(abs(conv), 0.0f, dist * 5.0f) * glm::abs(conv);
                     convergence = glm::max(factor, convergence);
+
+                    signed_dist = glm::clamp(signed_dist * 4.0f, 0.0f, 1.0f);
+                    signed_dist = (1.0f - abs(signed_dist - 0.5f) * 2.0f / conv) * conv;
+                    
+                    island_ridge = glm::max(island_ridge, signed_dist);
                 } else {
                     conv = glm::min(0.0f, conv);
 
                     float factor = glm::smoothstep(abs(conv), 0.0f, dist) * glm::abs(conv);
                     divergence = glm::max(factor, divergence);
+                    ocean_ridge = glm::min(ocean_ridge, dist);
                 }
             }
         }
@@ -789,40 +961,45 @@ axiom::texture_asset terrain_generator::render() {
 
         auto& plate = plates[min_plate];
 
-        vec3 offset = {axiom::noise_gen::perlin_noise(pos, 0.5f, 3, 0xFF5), axiom::noise_gen::perlin_noise(pos, 0.5f, 3, 0xF61), axiom::noise_gen::perlin_noise(pos, 0.5f, 3, 0x105)};
+        vec3 offset = {axiom::noise_gen::perlin_noise(pos, 1.0f, 3, 0xFF5), axiom::noise_gen::perlin_noise(pos, 1.0f, 3, 0xF61), axiom::noise_gen::perlin_noise(pos, 1.0f, 3, 0x105)};
         
-        float continental = -0.5f;//axiom::noise_gen::perlin_noise(pos + offset * 0.75f, 0.5, 4, 0x15) * 1.0f - 0.5f;
+        float continental = -0.5f + axiom::noise_gen::perlin_noise(pos + offset * 0.75f, 0.5, 4, 0x15) * 0.1f;
         
         if(plate.continental > 0.0f) {
             vec3 diff = pos - plate.craton;
-            float dist = length(diff) / (plate.weight * 0.85f) + axiom::noise_gen::perlin_noise(pos, 0.35, 7, 0x15) * 4.0f;
+            float dist = length(diff) / (plate.weight * 0.4f) + axiom::noise_gen::perlin_noise(pos + offset * 0.5f, 0.65, 5, 0x15) * 6.0f;
 
             continental += glm::mix(1.0f, 0.0f, glm::clamp(dist - 1.0f, 0.0f, 1.0f));
         }
 
         float convergence_factor = glm::sign(continental);
 
-        return continental + convergence * convergence_factor - divergence;
+        divergence = glm::smoothstep(0.0f, 0.1f, divergence);
+
+        return glm::mix(continental + convergence_factor * convergence + island_ridge * glm::smoothstep(1.0f, 0.0f, continental * 8.0f), glm::mix(-0.5f, -0.15f, (float)sqrt(glm::clamp(1.0f - ocean_ridge * 10.0f, 0.0f, 1.0f))), divergence);
     };
 
     std::vector<std::vector<float>> faces(6);
+    std::vector<std::vector<uint>> faces_flags(6);
 
     for(int f = 0; f < 6; ++f) {
         std::vector<float>& face = faces[f];
         face.resize(size * size);
+        faces_flags[f].resize(size * size);
         for(int y = 0; y < size; ++y) {
             for(int x = 0; x < size; ++x) {
                 terrain_pixel& px = terrain_pixels[get_index(ivec3(x, y, f))];
                 vec3 pos = vec3(float(x + 0.5f) / size * 2.0f - 1.0f, float(y + 0.5f) / size * 2.0f - 1.0f, 1.0f);
                 pos = orientations[f] * pos;
 
-                vec3 offset = {axiom::noise_gen::perlin_noise(pos, scale * 0.05f, 3, 0xFF5), axiom::noise_gen::perlin_noise(pos, scale * 0.05f, 3, 0xF61), axiom::noise_gen::perlin_noise(pos, scale * 0.05f, 3, 0x105)};
+                vec3 offset = {axiom::noise_gen::perlin_noise(pos, scale * 0.125f, 3, 0xFF5), axiom::noise_gen::perlin_noise(pos, scale * 0.125f, 3, 0xF61), axiom::noise_gen::perlin_noise(pos, scale * 0.125f, 3, 0x105)};
                 
                 pos = normalize(pos);
-                pos += offset * 0.033f;
+                pos += offset * 0.125f;
 
                 auto elev = sample_elev(pos);
 
+                faces_flags[f][y * size + x] = b;
                 face[y * size + x] = elev;
             }
         }
@@ -855,83 +1032,14 @@ axiom::texture_asset terrain_generator::render() {
                         ivec2 kpos = {xx + (kernel_size / 2), yy + (kernel_size / 2)};
 
                         float sum = 0.0f;
-                        float accum = 0.0f;
+                        float accum = 1.0f;
 
-                        if(npos.x < 0) {
-                            ivec2 nnpos = npos;
-                            nnpos.y = glm::clamp(nnpos.y, 0, size - 1);
+                        auto neighbor = get_neighbor(ivec3(pos, f), {xx, yy});
 
-                            vec2 nn = (nnpos + size) % size;
-                            nn += 0.5f;
-                            nn -= size * 0.5f;
-
-                            uint dst = edges[f * 4];
-
-                            mat2 rotation = rotations[f * 4];
-                            nnpos = rotation * nn;
-                            nnpos += size * 0.5f;
-
-                            sum += src_faces[dst][nnpos.y * size + nnpos.x];
-
+                        sum += src_faces[neighbor[0].z][neighbor[0].y * size + neighbor[0].x];
+                        if(neighbor[1].z != -1) {
+                            sum += src_faces[neighbor[1].z][neighbor[1].y * size + neighbor[1].x];
                             accum += 1.0f;
-                        } else if(npos.x >= size) {
-                            ivec2 nnpos = npos;
-                            nnpos.y = glm::clamp(nnpos.y, 0, size - 1);
-                            
-                            vec2 nn = (nnpos + size) % size;
-                            nn += 0.5f;
-                            nn -= size * 0.5f;
-
-                            uint dst = edges[f * 4 + 1];
-
-                            mat2 rotation = rotations[f * 4 + 1];
-                            nnpos = rotation * nn;
-                            nnpos += size * 0.5f;
-
-                            sum += src_faces[dst][nnpos.y * size + nnpos.x];
-                            
-                            accum += 1.0f;
-                        }
-                        
-                        if(npos.y < 0) {
-                            ivec2 nnpos = npos;
-                            nnpos.x = glm::clamp(nnpos.x, 0, size - 1);
-                            
-                            vec2 nn = (nnpos + size) % size;
-                            nn += 0.5f;
-                            nn -= size * 0.5f;
-
-                            uint dst = edges[f * 4 + 2];
-
-                            mat2 rotation = rotations[f * 4 + 2];
-                            nnpos = rotation * nn;
-                            nnpos += size * 0.5f;
-
-                            sum += src_faces[dst][nnpos.y * size + nnpos.x];
-
-                            accum += 1.0f;
-                        } else if(npos.y >= size) {
-                            ivec2 nnpos = npos;
-                            nnpos.x = glm::clamp(nnpos.x, 0, size - 1);
-                            
-                            vec2 nn = (nnpos + size) % size;
-                            nn += 0.5f;
-                            nn -= size * 0.5f;
-
-                            uint dst = edges[f * 4 + 3];
-
-                            mat2 rotation = rotations[f * 4 + 3];
-                            nnpos = rotation * nn;
-                            nnpos += size * 0.5f;
-
-                            sum += src_faces[dst][nnpos.y * size + nnpos.x];
-
-                            accum += 1.0f;
-                        }
-
-                        if(accum == 0.0f) {
-                            accum = 1.0f;
-                            sum = src_faces[f][npos.y * size + npos.x];
                         }
 
                         sum /= accum;
@@ -955,12 +1063,14 @@ axiom::texture_asset terrain_generator::render() {
             for(int x = 0; x < size; ++x) {
                 float elev = faces[f][y * size + x];
 
-                float ocean_level = 0.25f;
+                float ocean_level = 0.0f;
 
                 vec4 color;
-                if(elev > 1.0f) color = glm::mix(vec4(1.0f, 0.5f, 1.0f, 1.0f), vec4(1.0f, 1.0f, 1.0f, 1.0f), glm::clamp(elev - 1.0f, 0.0f, 1.0f));
-                else if(elev > ocean_level) color = glm::mix(vec4(1.0f, 0.0f, 1.0f, 1.0f), vec4(1.0f, 0.5f, 0.0f, 1.0f), glm::clamp((elev - ocean_level) / (1.0f - ocean_level), 0.0f, 1.0f));
+                if(elev > 1.0f) color = glm::mix(vec4(vec3(0.9f, 0.75f, 0.6f) * 0.5f, 1.0f), vec4(vec3(0.9f, 0.75f, 0.6f) * 0.25f, 1.0f), glm::clamp((elev - 1.0f) / 2.0f, 0.0f, 1.0f));
+                else if(elev > ocean_level) color = glm::mix(vec4(0.9f, 0.9f, 0.9f, 1.0f), vec4(vec3(0.9f, 0.75f, 0.6f) * 0.5f, 1.0f), glm::clamp((elev - ocean_level) / (1.0f - ocean_level), 0.0f, 1.0f));
                 else color = glm::mix(vec4(0.0f, 0.5f, 1.0f, 1.0f), vec4(0.0f, 0.0f, 1.0f, 1.0f), glm::clamp(-(elev - ocean_level), 0.0f, 1.0f));
+
+                //if(faces_flags[f][y * size + x] != 0) color = vec4(1.0f, 0.0f, 0.0f, 1.0f);
 
                 face[(y * size + x) * 4] = color.x * 0xFF;
                 face[(y * size + x) * 4 + 1] = color.y * 0xFF;
@@ -981,11 +1091,75 @@ axiom::texture_asset terrain_generator::render() {
         }
     }
 
-    return axiom::texture_asset::load(img, {size * 4, size * 3}, 4);
-    
+    ivec2 tex_size = {size * 4, size * 2};
+    std::vector<uint8_t> tex(tex_size.x * tex_size.y * 4);
+
+    for(int x = 0; x < tex_size.x; ++x) {
+        for(int y = 0; y < tex_size.y; ++y) {
+            vec2 s = vec2(float(x + 0.5f) / tex_size.x, float(y + 0.5f) / tex_size.y);
+
+            float angle_x = s.x * (axiom::pi * 2.0f);
+            float angle_y = (s.y - 0.5f) * (axiom::pi);
+
+            vec3 direction = vec3(cos(angle_x) * cos(angle_y), sin(angle_x) * cos(angle_y), sin(angle_y));
+
+            uint f;
+
+            if(abs(direction.x) >= abs(direction.y) && abs(direction.x) >= abs(direction.z)) {
+                if(direction.x > 0.0f) {
+                    f = 0;
+                } else {
+                    f = 1;
+                }
+            } else if(abs(direction.y) > abs(direction.x) && abs(direction.y) >= abs(direction.z)) {
+                if(direction.y > 0.0f) {
+                    f = 2;
+                } else {
+                    f = 3;
+                }
+            } else if(abs(direction.z) > abs(direction.x) && abs(direction.z) > abs(direction.y)) {
+                if(direction.z > 0.0f) {
+                    f = 4;
+                } else {
+                    f = 5;
+                }
+            }
+
+            direction /= glm::max(glm::max(abs(direction.x), abs(direction.y)), abs(direction.z));
+
+            direction = glm::inverse(orientations[f]) * direction;
+
+            vec2 coords = direction.xy();
+
+            coords = floor((coords * 0.5f + 0.5f) * (float)size);
+
+            uint src_index = coords.y * size + coords.x;
+            uint dst_index = y * tex_size.x + x;
+
+            tex[dst_index * 4] = texture_faces[f][src_index * 4];
+            tex[dst_index * 4 + 1] = texture_faces[f][src_index * 4 + 1];
+            tex[dst_index * 4 + 2] = texture_faces[f][src_index * 4 + 2];
+            tex[dst_index * 4 + 3] = texture_faces[f][src_index * 4 + 3];
+        }
+    }
+
     std::string filepath = "output/planet" + std::to_string(axiom::get_timestamp()) + ".png";
     stbi_flip_vertically_on_write(true);
-    stbi_write_png(filepath.c_str(), size * 4, size * 3, 4, img.data(), size * 4 * 4);
+    stbi_write_png(filepath.c_str(), tex_size.x, tex_size.y, 4, tex.data(), tex_size.x * 4);
 
-    return {};
+    return axiom::texture_asset::load(img, {size * 4, size * 3}, 4);
+}
+
+std::vector<float> terrain_generator::get_heights() {
+    if(heights.size() == 0) {
+        for(int y = 0; y < 256; ++y) {
+            for(int x = 0; x < 256; ++x) {
+                float h = axiom::noise_gen::perlin_noise(vec3(float(x + 0.5f) / 256, float(y + 0.5f) / 256, 12.67f), 0.5, 4, 0xF1);
+
+                //heights.push_back(f);
+            }
+        }
+    }
+
+    return heights;
 }

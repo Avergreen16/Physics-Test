@@ -423,14 +423,12 @@ void set_scene() {
 
     axiom::random32 rand(0xFF1);
 
-    float angle = rand();
-    mat2 ori = mat2{
-        cos(angle), -sin(angle),
-        sin(angle), cos(angle)
-    };
-    ivec2 num_squares = {0, 0};
+    float angle = 0.0f;
+    mat2 ori = glm::identity<mat2>();
+
+    ivec2 num_squares = {12, 12};
     vec2 size = vec2(0.5f);
-    vec2 center_pos = vec2(0.0f, 12.0f);
+    vec2 center_pos = vec2(0.0f, 9.0f);
     vec2 sep = size + 0.125f;
 
     create_square(vec2(128.0f, 0.5f), vec2(0.0f, 0.25f), glm::identity<mat2>(), vec3(1.0f), 0.0f);
@@ -439,12 +437,12 @@ void set_scene() {
 
     for(int y = 0; y < num_squares.y; ++y) {
         for(int x = 0; x < num_squares.x; ++x) {
-            vec2 pos = vec2(x, y) - vec2(num_squares) * 0.5f;
+            vec2 pos = vec2(x, y) + 0.5f - vec2(num_squares) * 0.5f;
             pos *= sep;
             pos = ori * pos;
             pos += center_pos;
 
-            uint num_vertices = rand.next() % 4 + 3;
+            uint num_vertices = 4;//rand.next() % 4 + 3;
 
             vec3 color;
 
@@ -465,11 +463,19 @@ void set_scene() {
     }
     //uint e = create_capsule(vec2(0.25f, 16.0f), 8, vec2(-32.0f, 16.0f), ori, axiom::hsv_color(rand() * 0.125f + 5.0f, 0.65f, 1.0f), 1.0f);
     
+    angle = rand() * axiom::pi * 2.0f;
+    ori = mat2{
+        cos(angle), -sin(angle),
+        sin(angle), cos(angle)
+    };
+
     uint prev = 0.0f;
     std::vector<uint> prevs;
 
-    for(int i = 0; i < 12; ++i) {
-        uint e = create_capsule(vec2(0.125f, 1.0f), 8, vec2(0.0f, 4.0f) + ori * vec2(0.0f, i), ori, axiom::hsv_color(rand() * 0.125f + 2.25f, 0.65f, 1.0f), 1.0f);
+    uint num_links = 12;
+
+    for(int i = 0; i < num_links; ++i) {
+        uint e = create_capsule(vec2(0.125f, 1.0f) * 0.25f, 8, vec2(12.0f, 8.0f) + ori * vec2(0.0f, (i + 0.5f) - (num_links / 2.0f)) * 0.25f, ori, axiom::hsv_color(rand() * 0.125f + 2.25f, 0.65f, 1.0f), 1.0f);
 
         if(i != 0) {
             auto& collider = axiom::ecs.get_component<axiom::collider2d>(e);
@@ -479,8 +485,8 @@ void set_scene() {
             cc.b = e;
 
             axiom::pos_constraint pc;
-            pc.a = vec2(0.0f, 0.6f);
-            pc.b = vec2(0.0f, -0.6f);
+            pc.a = vec2(0.0f, 0.6f) * 0.25f;
+            pc.b = vec2(0.0f, -0.6f) * 0.25f;
             pc.vs = {vec2(1, 0), vec2(0, 1)};
             pc.is_hold = true;
 
@@ -491,6 +497,15 @@ void set_scene() {
 
         prevs.push_back(e);
     }
+    
+    angle = rand() * axiom::pi * 2.0f;
+    ori = mat2{
+        cos(angle), -sin(angle),
+        sin(angle), cos(angle)
+    };
+
+    //create_capsule(vec2(0.125f, 12.0f), 8, vec2(-12.0f, 8.0f), ori, vec4(0.5f, 0.0f, 1.0f, 1.0f) * 0.65f + 0.35f, 1.0f);
+    create_square(vec2(3.0f), vec2(-12.0f, 8.0f), ori, vec4(1.0f, 0.0f, 0.5f, 1.0f) * 0.65f + 0.35f, 32.0f);
 
     for(uint e : prevs) {
         auto& collider = axiom::ecs.get_component<axiom::collider2d>(e);
