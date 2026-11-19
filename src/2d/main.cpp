@@ -103,6 +103,7 @@ auto base_render = [](uint camera_entity, axiom::framebuffer& framebuffer) {
 
     auto& collector_color = axiom::ecs.collectors["color_mesh2d"];
 
+    /**/
     for(uint entity : collector_color.entities) {
         axiom::transform2d& transform = axiom::ecs.get_component<axiom::transform2d>(entity);
         axiom::color_mesh2d& mesh = axiom::ecs.get_component<axiom::color_mesh2d>(entity);
@@ -110,10 +111,10 @@ auto base_render = [](uint camera_entity, axiom::framebuffer& framebuffer) {
         mat4 model = axiom::get_model(transform);
         axiom::shader& color_shader = axiom::get_shader("color2d");
 
-        origins.push_back(transform.position);
-        textures.push_back(vec4(3, 0, 5, 5));
-        colors.push_back(mesh.border[0].color);
-        sizes.push_back(vec2(5, 5));
+        //origins.push_back(transform.position);
+        //textures.push_back(vec4(3, 0, 5, 5));
+        //colors.push_back(mesh.border[0].color);
+        //sizes.push_back(vec2(5, 5));
 
         //
 
@@ -426,10 +427,10 @@ void set_scene() {
     float angle = 0.0f;
     mat2 ori = glm::identity<mat2>();
 
-    ivec2 num_squares = {12, 12};
-    vec2 size = vec2(0.5f);
-    vec2 center_pos = vec2(0.0f, 9.0f);
-    vec2 sep = size + 0.125f;
+    ivec2 num_squares = {32, 32};
+    vec2 size = vec2(0.25f);
+    vec2 center_pos = vec2(0.0f, 6.0f);
+    vec2 sep = size + 0.0625f;
 
     create_square(vec2(128.0f, 0.5f), vec2(0.0f, 0.25f), glm::identity<mat2>(), vec3(1.0f), 0.0f);
     create_square(vec2(0.5, 24.0), vec2(63.75, 12.5), glm::identity<mat2>(), vec3(1.0f), 0.0f);
@@ -472,10 +473,11 @@ void set_scene() {
     uint prev = 0.0f;
     std::vector<uint> prevs;
 
-    uint num_links = 12;
+    uint num_links = 0;
+    float fsize = 0.25f;
 
     for(int i = 0; i < num_links; ++i) {
-        uint e = create_capsule(vec2(0.125f, 1.0f) * 0.25f, 8, vec2(12.0f, 8.0f) + ori * vec2(0.0f, (i + 0.5f) - (num_links / 2.0f)) * 0.25f, ori, axiom::hsv_color(rand() * 0.125f + 2.25f, 0.65f, 1.0f), 1.0f);
+        uint e = create_capsule(vec2(0.125f, 1.0f) * fsize, 8, vec2(12.0f, 8.0f) + ori * vec2(0.0f, (i + 0.5f) - (num_links / 2.0f)) * fsize, ori, axiom::hsv_color(rand() * 0.125f + 2.25f, 0.65f, 1.0f), 1.0f);
 
         if(i != 0) {
             auto& collider = axiom::ecs.get_component<axiom::collider2d>(e);
@@ -485,8 +487,8 @@ void set_scene() {
             cc.b = e;
 
             axiom::pos_constraint pc;
-            pc.a = vec2(0.0f, 0.6f) * 0.25f;
-            pc.b = vec2(0.0f, -0.6f) * 0.25f;
+            pc.a = vec2(0.0f, 0.6f) * fsize;
+            pc.b = vec2(0.0f, -0.6f) * fsize;
             pc.vs = {vec2(1, 0), vec2(0, 1)};
             pc.is_hold = true;
 
@@ -498,6 +500,11 @@ void set_scene() {
         prevs.push_back(e);
     }
     
+    for(uint e : prevs) {
+        auto& collider = axiom::ecs.get_component<axiom::collider2d>(e);
+        collider.non_colliding = std::set<uint>(prevs.begin(), prevs.end());
+    }
+    
     angle = rand() * axiom::pi * 2.0f;
     ori = mat2{
         cos(angle), -sin(angle),
@@ -506,11 +513,6 @@ void set_scene() {
 
     //create_capsule(vec2(0.125f, 12.0f), 8, vec2(-12.0f, 8.0f), ori, vec4(0.5f, 0.0f, 1.0f, 1.0f) * 0.65f + 0.35f, 1.0f);
     create_square(vec2(3.0f), vec2(-12.0f, 8.0f), ori, vec4(1.0f, 0.0f, 0.5f, 1.0f) * 0.65f + 0.35f, 32.0f);
-
-    for(uint e : prevs) {
-        auto& collider = axiom::ecs.get_component<axiom::collider2d>(e);
-        collider.non_colliding = std::set<uint>(prevs.begin(), prevs.end());
-    }
 }
 
 void create_ui(std::string filepath) {

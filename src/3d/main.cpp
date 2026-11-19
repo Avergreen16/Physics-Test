@@ -1,5 +1,6 @@
 #include <include/core.hpp>
 #include <include/render.hpp>
+#include <include/wrapper.hpp>
 #include <include/ui.hpp>
 #include <include/physics3d.hpp>
 
@@ -93,11 +94,11 @@ void render_billboards(uint camera, std::vector<vec3> origins, std::vector<vec4>
     transform.orientation = glm::identity<mat3>();
     model = axiom::get_model(transform, camera_transform);
 
-    vertices.vertex_buffer_data(tvs.data(), tvs.size(), sizeof(axiom::texture_vertex3d), GL_STREAM_DRAW);
-    vertices.add_vertex_attribute(0, 3, GL_FLOAT, false, sizeof(axiom::texture_vertex3d), 0);
-    vertices.add_vertex_attribute(1, 2, GL_FLOAT, false, sizeof(axiom::texture_vertex3d), sizeof(float) * 3);
-    vertices.add_vertex_attribute(2, 4, GL_FLOAT, false, sizeof(axiom::texture_vertex3d), sizeof(float) * 5);
-    vertices.add_vertex_attribute(3, 3, GL_FLOAT, false, sizeof(axiom::texture_vertex3d), sizeof(float) * 9);
+    vertices.vertex_buffer_data(tvs.data(), tvs.size(), sizeof(axiom::texture_vertex3d), axiom::usage_type::STREAM_DRAW);
+    vertices.add_vertex_attribute(0, 3, axiom::var_type::FLOAT, false, sizeof(axiom::texture_vertex3d), 0);
+    vertices.add_vertex_attribute(1, 2, axiom::var_type::FLOAT, false, sizeof(axiom::texture_vertex3d), sizeof(float) * 3);
+    vertices.add_vertex_attribute(2, 4, axiom::var_type::FLOAT, false, sizeof(axiom::texture_vertex3d), sizeof(float) * 5);
+    vertices.add_vertex_attribute(3, 3, axiom::var_type::FLOAT, false, sizeof(axiom::texture_vertex3d), sizeof(float) * 9);
 
     axiom::shader& texture_shader = axiom::get_shader("texture3d");
     vec3 light_dir = vec3(0.0f, 0.0f, 0.0f);
@@ -109,7 +110,6 @@ void render_billboards(uint camera, std::vector<vec3> origins, std::vector<vec4>
     axiom::push_uniform(0, &model);
     axiom::push_uniform(1, &view);
     axiom::push_uniform(2, &proj);
-    // glUniform1f(3, msystem.light_contrast);
 
     vertices.draw_vertices_triangles();
 }
@@ -245,11 +245,11 @@ axiom::vertices create_star_vertices(std::vector<star> stars) {
 
     vertices.init();
 
-    vertices.vertex_buffer_data(stars.data(), stars.size(), sizeof(star), GL_STATIC_DRAW);
+    vertices.vertex_buffer_data(stars.data(), stars.size(), sizeof(star), axiom::usage_type::STATIC_DRAW);
 
-    vertices.add_vertex_attribute(0, 3, GL_FLOAT, false, sizeof(star), 0);
-    vertices.add_vertex_attribute(1, 3, GL_FLOAT, false, sizeof(star), sizeof(float) * 3);
-    vertices.add_vertex_attribute(2, 3, GL_FLOAT, false, sizeof(star), sizeof(float) * 6);
+    vertices.add_vertex_attribute(0, 3, axiom::var_type::FLOAT, false, sizeof(star), 0);
+    vertices.add_vertex_attribute(1, 3, axiom::var_type::FLOAT, false, sizeof(star), sizeof(float) * 3);
+    vertices.add_vertex_attribute(2, 3, axiom::var_type::FLOAT, false, sizeof(star), sizeof(float) * 6);
 
     return std::move(vertices);
 }
@@ -286,10 +286,10 @@ void render_lines(uint camera, std::vector<vec3> points, std::vector<vec4> color
     transform.orientation = glm::identity<mat3>();
     model = axiom::get_model(transform, camera_transform);
 
-    vertices.vertex_buffer_data(cvs.data(), cvs.size(), sizeof(axiom::color_vertex3d), GL_STREAM_DRAW);
-    vertices.add_vertex_attribute(0, 3, GL_FLOAT, false, sizeof(axiom::color_vertex3d), 0);
-    vertices.add_vertex_attribute(1, 4, GL_FLOAT, false, sizeof(axiom::color_vertex3d), sizeof(float) * 3);
-    vertices.add_vertex_attribute(2, 3, GL_FLOAT, false, sizeof(axiom::color_vertex3d), sizeof(float) * 7);
+    vertices.vertex_buffer_data(cvs.data(), cvs.size(), sizeof(axiom::color_vertex3d), axiom::usage_type::STREAM_DRAW);
+    vertices.add_vertex_attribute(0, 3, axiom::var_type::FLOAT, false, sizeof(axiom::color_vertex3d), 0);
+    vertices.add_vertex_attribute(1, 4, axiom::var_type::FLOAT, false, sizeof(axiom::color_vertex3d), sizeof(float) * 3);
+    vertices.add_vertex_attribute(2, 3, axiom::var_type::FLOAT, false, sizeof(axiom::color_vertex3d), sizeof(float) * 7);
 
     axiom::shader& shader = axiom::get_shader("color3d");
     vec3 light_dir = vec3(0.0f, 0.0f, 0.0f);
@@ -309,10 +309,12 @@ auto base_render = [](uint camera_entity, axiom::framebuffer& framebuffer) {
     static auto stars = create_stars(0x4000);
     static auto star_vertices = create_star_vertices(stars);
     
-    glDisable(GL_DEPTH_TEST);
+    axiom::disable_depth_test();
     
     axiom::transform3d& camera_transform = axiom::ecs.get_component<axiom::transform3d>(camera_entity);
     axiom::camera3d& camera = axiom::ecs.get_component<axiom::camera3d>(camera_entity);
+
+    camera.aspect = vec2(framebuffer.size) / float(glm::min(framebuffer.size.x, framebuffer.size.y));
     
     auto& shader = axiom::get_shader("stars");
 
@@ -332,7 +334,7 @@ auto base_render = [](uint camera_entity, axiom::framebuffer& framebuffer) {
 
     //
 
-    glEnable(GL_DEPTH_TEST);
+    axiom::enable_depth_test();
 
     //
 
@@ -343,7 +345,7 @@ auto base_render = [](uint camera_entity, axiom::framebuffer& framebuffer) {
 
     // render shape
 
-    glEnable(GL_DEPTH_TEST);
+    axiom::enable_depth_test();
 
     auto& collector_color = axiom::ecs.collectors["color_mesh3d"];
 
@@ -362,10 +364,10 @@ auto base_render = [](uint camera_entity, axiom::framebuffer& framebuffer) {
 
         axiom::get_texture("flat").bind(0);
 
-        glUniformMatrix4fv(0, 1, false, &model[0][0]);
-        glUniformMatrix4fv(1, 1, false, &view[0][0]);
-        glUniformMatrix4fv(2, 1, false, &proj[0][0]);
-        glUniform1f(3, light_contrast);
+        axiom::push_uniform(0, &model);
+        axiom::push_uniform(1, &view);
+        axiom::push_uniform(2, &proj);
+        axiom::push_uniform(3, light_contrast);
 
         mesh.vertices->draw_vertices_triangles();
     }
@@ -386,10 +388,10 @@ auto base_render = [](uint camera_entity, axiom::framebuffer& framebuffer) {
         texture_shader.use();
         mesh.texture->bind(0);
 
-        glUniformMatrix4fv(0, 1, false, &model[0][0]);
-        glUniformMatrix4fv(1, 1, false, &view[0][0]);
-        glUniformMatrix4fv(2, 1, false, &proj[0][0]);
-        glUniform1f(3, light_contrast);
+        axiom::push_uniform(0, &model);
+        axiom::push_uniform(1, &view);
+        axiom::push_uniform(2, &proj);
+        //glUniform1f(3, light_contrast);
 
         mesh.vertices->draw_vertices_triangles();
     }
@@ -408,10 +410,10 @@ auto base_render = [](uint camera_entity, axiom::framebuffer& framebuffer) {
         texture_shader.use();
         mesh.texture->bind(0);
 
-        glUniformMatrix4fv(0, 1, false, &model[0][0]);
-        glUniformMatrix4fv(1, 1, false, &view[0][0]);
-        glUniformMatrix4fv(2, 1, false, &proj[0][0]);
-        glUniform1f(3, light_contrast);
+        axiom::push_uniform(0, &model);
+        axiom::push_uniform(1, &view);
+        axiom::push_uniform(2, &proj);
+        //glUniform1f(3, light_contrast);
 
         mesh.vertices->draw_vertices_triangles();
     }
@@ -421,18 +423,23 @@ void render_grid(uint camera_entity, axiom::framebuffer& framebuffer) {
     axiom::transform3d& camera_transform = axiom::ecs.get_component<axiom::transform3d>(camera_entity);
     axiom::camera3d& camera = axiom::ecs.get_component<axiom::camera3d>(camera_entity);
 
-    auto& vertices = axiom::get_vertices();
+    static axiom::vertices vertices = []() {
+        axiom::vertices vertices;
+        vertices.init();
 
-    std::vector<vec2> vs = {
-        vec2(-1.0f, -1.0f),
-        vec2(1.0f, -1.0f),
-        vec2(-1.0f, 1.0f),
-        vec2(1.0f, 1.0f)};
+        std::vector<vec2> vs = {
+            vec2(-1.0f, -1.0f),
+            vec2(1.0f, -1.0f),
+            vec2(-1.0f, 1.0f),
+            vec2(1.0f, 1.0f)};
 
-    vs = {vs[0], vs[1], vs[3], vs[0], vs[3], vs[2]};
+        vs = {vs[0], vs[1], vs[3], vs[0], vs[3], vs[2]};
 
-    vertices.vertex_buffer_data(vs.data(), vs.size(), sizeof(vec2), GL_STATIC_DRAW);
-    vertices.add_vertex_attribute(0, 2, GL_FLOAT, false, sizeof(vec2), 0);
+        vertices.vertex_buffer_data(vs.data(), vs.size(), sizeof(vec2), axiom::usage_type::STATIC_DRAW);
+        vertices.add_vertex_attribute(0, 2, axiom::var_type::FLOAT, false, sizeof(vec2), 0);
+
+        return std::move(vertices);
+    }();
 
     axiom::transform3d grid_transform;
     grid_transform.position = vec3(0.0f);
@@ -459,15 +466,15 @@ std::function<void(axiom::framebuffer&, axiom::transform3d&, mat4, mat4, float)>
     fbuffer.bind();
     mat4 model = glm::identity<mat4>();
 
+    axiom::enable_depth_test();
     //glCullFace(GL_FRONT);
     //glEnable(GL_CULL_FACE);
+    //axiom::disable_cull_face();
 
     float light_contrast = 0.75f;
 
     // render shape
 
-    glDisable(GL_CULL_FACE);
-    glEnable(GL_DEPTH_TEST);
 
     auto& collector_color = axiom::ecs.collectors["color_mesh3d"];
 
@@ -482,10 +489,10 @@ std::function<void(axiom::framebuffer&, axiom::transform3d&, mat4, mat4, float)>
 
         color_shader.use();
 
-        glUniformMatrix4fv(0, 1, false, &model[0][0]);
-        glUniformMatrix4fv(1, 1, false, &view[0][0]);
-        glUniformMatrix4fv(2, 1, false, &proj[0][0]);
-        glUniform1f(3, light_contrast);
+        axiom::push_uniform(0, &model);
+        axiom::push_uniform(1, &view);
+        axiom::push_uniform(2, &proj);
+        //glUniform1f(3, light_contrast);
 
         mesh.vertices->draw_vertices_triangles();
     }
@@ -504,10 +511,10 @@ std::function<void(axiom::framebuffer&, axiom::transform3d&, mat4, mat4, float)>
         texture_shader.use();
         mesh.texture->bind(0);
 
-        glUniformMatrix4fv(0, 1, false, &model[0][0]);
-        glUniformMatrix4fv(1, 1, false, &view[0][0]);
-        glUniformMatrix4fv(2, 1, false, &proj[0][0]);
-        glUniform1f(3, light_contrast);
+        axiom::push_uniform(0, &model);
+        axiom::push_uniform(1, &view);
+        axiom::push_uniform(2, &proj);
+        //glUniform1f(3, light_contrast);
 
         mesh.vertices->draw_vertices_triangles();
     }
@@ -526,10 +533,10 @@ std::function<void(axiom::framebuffer&, axiom::transform3d&, mat4, mat4, float)>
         texture_shader.use();
         mesh.texture->bind(0);
 
-        glUniformMatrix4fv(0, 1, false, &model[0][0]);
-        glUniformMatrix4fv(1, 1, false, &view[0][0]);
-        glUniformMatrix4fv(2, 1, false, &proj[0][0]);
-        glUniform1f(3, light_contrast);
+        axiom::push_uniform(0, &model);
+        axiom::push_uniform(1, &view);
+        axiom::push_uniform(2, &proj);
+        //glUniform1f(3, light_contrast);
 
         mesh.vertices->draw_vertices_triangles();
     }
@@ -558,7 +565,7 @@ auto visualizer_render = [](uint camera_entity, axiom::framebuffer& framebuffer)
 
         return ret;
     }();
-
+    
     static std::vector<vec3> vs = []() {
         std::vector<vec3> ret;
 
@@ -585,13 +592,14 @@ auto visualizer_render = [](uint camera_entity, axiom::framebuffer& framebuffer)
         axiom::vertices ret;
         ret.init();
 
-        ret.vertex_buffer_data(vs.data(), vs.size(), sizeof(vec3), GL_STATIC_DRAW);
+        ret.vertex_buffer_data(vs.data(), vs.size(), sizeof(vec3), axiom::usage_type::STATIC_DRAW);
 
-        ret.add_vertex_attribute(0, 3, GL_FLOAT, false, sizeof(vec3), 0);
+        ret.add_vertex_attribute(0, 3, axiom::var_type::FLOAT, false, sizeof(vec3), 0);
 
         return std::move(ret);
     }();
 
+    /* FLAG
     static axiom::texture texture;
 
     texture = axiom::texture((uint8_t*)heights.data(), {256, 256, 0}, GL_TEXTURE_2D, axiom::texture_format::RF);
@@ -615,6 +623,7 @@ auto visualizer_render = [](uint camera_entity, axiom::framebuffer& framebuffer)
     texture.bind(0);
 
     vertices.draw_vertices_triangles();
+    */
     
     // planet
     /*
@@ -628,8 +637,8 @@ auto visualizer_render = [](uint camera_entity, axiom::framebuffer& framebuffer)
 
     vs = {vs[0], vs[1], vs[3], vs[0], vs[3], vs[2]};
 
-    vertices.vertex_buffer_data(vs.data(), vs.size(), sizeof(vec2), GL_STATIC_DRAW);
-    vertices.add_vertex_attribute(0, 2, GL_FLOAT, false, sizeof(vec2), 0);
+    vertices.vertex_buffer_data(vs.data(), vs.size(), sizeof(vec2), axiom::usage_type::STATIC_DRAW);
+    vertices.add_vertex_attribute(0, 2, axiom::var_type::FLOAT, false, sizeof(vec2), 0);
 
     axiom::transform3d grid_transform;
     grid_transform.position = vec3(0.0f);
@@ -666,8 +675,8 @@ auto visualizer_render = [](uint camera_entity, axiom::framebuffer& framebuffer)
 
     vs = {vs[0], vs[1], vs[3], vs[0], vs[3], vs[2]};
 
-    vertices.vertex_buffer_data(vs.data(), vs.size(), sizeof(vec2), GL_STATIC_DRAW);
-    vertices.add_vertex_attribute(0, 2, GL_FLOAT, false, sizeof(vec2), 0);
+    vertices.vertex_buffer_data(vs.data(), vs.size(), sizeof(vec2), axiom::usage_type::STATIC_DRAW);
+    vertices.add_vertex_attribute(0, 2, axiom::var_type::FLOAT, false, sizeof(vec2), 0);
 
     axiom::transform3d grid_transform;
     grid_transform.position = vec3(0.0f);
@@ -696,17 +705,17 @@ auto visualizer_render = [](uint camera_entity, axiom::framebuffer& framebuffer)
     axiom::transform3d& camera_transform = axiom::ecs.get_component<axiom::transform3d>(camera_entity);
     axiom::camera3d& camera = axiom::ecs.get_component<axiom::camera3d>(camera_entity);
 
-    glEnable(GL_DEPTH_TEST);
+    axiom::disable_depth_test(GL_DE
 
     //
 
     std::vector<axiom::color_vertex3d> colvs;
     for(vec3 v : vs) colvs.push_back(axiom::color_vertex3d(v, vec4(1.0f), vec3(0.0f)));
     if(!vertices.initialized) vertices.init();
-    vertices.vertex_buffer_data(colvs.data(), colvs.size(), sizeof(axiom::color_vertex3d), GL_STREAM_DRAW);
-    vertices.add_vertex_attribute(0, 3, GL_FLOAT, false, sizeof(axiom::color_vertex3d), 0);
-    vertices.add_vertex_attribute(1, 4, GL_FLOAT, false, sizeof(axiom::color_vertex3d), sizeof(float) * 3);
-    vertices.add_vertex_attribute(2, 3, GL_FLOAT, false, sizeof(axiom::color_vertex3d), sizeof(float) * 7);
+    vertices.vertex_buffer_data(colvs.data(), colvs.size(), sizeof(axiom::color_vertex3d), axiom::usage_type::STREAM_DRAW);
+    vertices.add_vertex_attribute(0, 3, axiom::var_type::FLOAT, false, sizeof(axiom::color_vertex3d), 0);
+    vertices.add_vertex_attribute(1, 4, axiom::var_type::FLOAT, false, sizeof(axiom::color_vertex3d), sizeof(float) * 3);
+    vertices.add_vertex_attribute(2, 3, axiom::var_type::FLOAT, false, sizeof(axiom::color_vertex3d), sizeof(float) * 7);
 
     mat4 view = axiom::get_view(camera, camera_transform);
     mat4 proj = axiom::get_proj(camera);
@@ -725,9 +734,9 @@ auto visualizer_render = [](uint camera_entity, axiom::framebuffer& framebuffer)
 
     color_shader.use();
 
-    glUniformMatrix4fv(0, 1, false, &model[0][0]);
-    glUniformMatrix4fv(1, 1, false, &view[0][0]);
-    glUniformMatrix4fv(2, 1, false, &proj[0][0]);
+    axiom::push_uniform(0, 1, false, &model);
+    axiom::push_uniform(1, 1, false, &view);
+    axiom::push_uniform(2, 1, false, &proj);
 
     vertices.draw_vertices_lines();
     */
@@ -737,11 +746,87 @@ int main(int argc, char **argv) {
     //gen.init();
     //auto planet_asset = gen.render();
 
-    axiom::window window(ivec2(256), ivec2(512), 0, "Axiom", false);
+    axiom::context ctx(ivec2(256), ivec2(512), 0, "Axiom", false);
 
-    axiom::ui_init(&window);
-    axiom::render_init(&window);
+    axiom::ui_init();
+    axiom::render_init(&ctx);
     axiom::physics3d_init();
+
+    {
+        axiom::render_system& rsys = axiom::ecs.get_system<axiom::render_system>();
+        axiom::ui_system& usys = axiom::ecs.get_system<axiom::ui_system>();
+        
+        usys.font_handler.process(rsys.resource_root + "/fonts/axiom-large.bdf", "test");
+
+        axiom::text_asset vert;
+        axiom::text_asset geom;
+        axiom::text_asset frag;
+        axiom::texture_asset texasset;
+
+        vert = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/ui.vert");
+        frag = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/ui.frag");
+        rsys.shaders.emplace("ui", std::move(axiom::shader(vert, frag)));
+        
+        vert = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/ui_composite.vert");
+        frag = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/ui_composite.frag");
+        rsys.shaders.emplace("ui_composite", std::move(axiom::shader(vert, frag)));
+
+        vert = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/grid2d.vert");
+        frag = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/grid2d.frag");
+        rsys.shaders.emplace("grid2d", std::move(axiom::shader(vert, frag)));
+        
+        vert = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/grid3d.vert");
+        frag = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/grid3d.frag");
+        rsys.shaders.emplace("grid3d", std::move(axiom::shader(vert, frag)));
+        
+        vert = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/color2d.vert");
+        frag = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/color2d.frag");
+        rsys.shaders.emplace("color2d", std::move(axiom::shader(vert, frag)));
+        
+        vert = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/color3d.vert");
+        frag = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/color3d.frag");
+        rsys.shaders.emplace("color3d", std::move(axiom::shader(vert, frag)));
+
+        vert = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/colortex3d.vert");
+        geom = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/colortex3d.geom");
+        frag = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/colortex3d.frag");
+        rsys.shaders.emplace("colortex3d", std::move(axiom::shader(vert, geom, frag)));
+
+        vert = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/texture2d.vert");
+        frag = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/texture2d.frag");
+        rsys.shaders.emplace("texture2d", std::move(axiom::shader(vert, frag)));
+
+        vert = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/texture3d.vert");
+        frag = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/texture3d.frag");
+        rsys.shaders.emplace("texture3d", std::move(axiom::shader(vert, frag)));
+        
+        vert = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/shadow.vert");
+        frag = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/shadow.frag");
+        rsys.shaders.emplace("shadow", std::move(axiom::shader(vert, frag)));
+        
+        vert = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/test.vert");
+        frag = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/test.frag");
+        rsys.shaders.emplace("test", std::move(axiom::shader(vert, frag)));
+        
+        vert = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/texture_range3d.vert");
+        frag = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/texture_range3d.frag");
+        rsys.shaders.emplace("texture_range3d", std::move(axiom::shader(vert, frag)));
+        
+        vert = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/glyph.vert");
+        frag = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/glyph.frag");
+        rsys.shaders.emplace("glyph", std::move(axiom::shader(vert, frag)));
+
+        //
+
+        texasset = axiom::texture_asset::load(rsys.resource_root + "/textures/ui.png");
+        rsys.textures.emplace("ui", std::move(axiom::texture(texasset, axiom::texture_format::RGBA8)));
+
+        texasset = axiom::texture_asset::load(rsys.resource_root + "/textures/tilesheet.png");
+        rsys.textures.emplace("tilesheet", std::move(axiom::texture(texasset, axiom::texture_format::RGBA8)));
+        
+        texasset = axiom::texture_asset::load(rsys.resource_root + "/textures/test.png");
+        rsys.textures.emplace("test", std::move(axiom::texture(texasset, axiom::texture_format::RGBA8)));
+    }
 
     axiom::physics_system3d& physics_system = axiom::ecs.get_system<axiom::physics_system3d>();
     physics_system.sim_active = false;
@@ -755,22 +840,22 @@ int main(int argc, char **argv) {
         axiom::text_asset frag;
         axiom::texture_asset texasset;
 
-        vert = axiom::text_asset::load(render_system.resource_root + "/shaders/skybox.vert");
-        frag = axiom::text_asset::load(render_system.resource_root + "/shaders/skybox.frag");
+        vert = axiom::text_asset::load(render_system.resource_root + "/shaders/opengl/skybox.vert");
+        frag = axiom::text_asset::load(render_system.resource_root + "/shaders/opengl/skybox.frag");
         render_system.shaders.emplace("skybox", std::move(axiom::shader(vert, frag)));
         
-        vert = axiom::text_asset::load(render_system.resource_root + "/shaders/sphere.vert");
-        frag = axiom::text_asset::load(render_system.resource_root + "/shaders/sphere.frag");
+        vert = axiom::text_asset::load(render_system.resource_root + "/shaders/opengl/sphere.vert");
+        frag = axiom::text_asset::load(render_system.resource_root + "/shaders/opengl/sphere.frag");
         render_system.shaders.emplace("sphere", std::move(axiom::shader(vert, frag)));
         
-        vert = axiom::text_asset::load(render_system.resource_root + "/shaders/stars.vert");
-        geom = axiom::text_asset::load(render_system.resource_root + "/shaders/stars.geom");
-        frag = axiom::text_asset::load(render_system.resource_root + "/shaders/stars.frag");
+        vert = axiom::text_asset::load(render_system.resource_root + "/shaders/opengl/stars.vert");
+        geom = axiom::text_asset::load(render_system.resource_root + "/shaders/opengl/stars.geom");
+        frag = axiom::text_asset::load(render_system.resource_root + "/shaders/opengl/stars.frag");
         render_system.shaders.emplace("stars", std::move(axiom::shader(vert, geom, frag)));
         
-        vert = axiom::text_asset::load(render_system.resource_root + "/shaders/heightmap.vert");
-        geom = axiom::text_asset::load(render_system.resource_root + "/shaders/heightmap.geom");
-        frag = axiom::text_asset::load(render_system.resource_root + "/shaders/heightmap.frag");
+        vert = axiom::text_asset::load(render_system.resource_root + "/shaders/opengl/heightmap.vert");
+        geom = axiom::text_asset::load(render_system.resource_root + "/shaders/opengl/heightmap.geom");
+        frag = axiom::text_asset::load(render_system.resource_root + "/shaders/opengl/heightmap.frag");
         render_system.shaders.emplace("heightmap", std::move(axiom::shader(vert, geom, frag)));
 
         texasset = axiom::texture_asset::load(render_system.resource_root + "/textures/flat.png");
@@ -818,7 +903,7 @@ int main(int argc, char **argv) {
     uint prev_e = 0;
     
     for(int i = 0; i < 3; ++i) {
-        uint e = create_capsule(vec3(0.0f, 12.0f, 6.0f) + ori * vec3(0.0f, 0.0f, 1.125f * (i + 0.5f - 8 * 0.5f)), ori, vec2(0.25f, 1.0f), ivec2(12, 6), axiom::hsv_color(rand() * 0.125f + 2.25f, 0.65f, 1.0f), 2.0f);
+        uint e = create_capsule(vec3(0.0f, 12.0f, 6.0f) + ori * vec3(0.0f, 0.0f, 1.125f * (i + 0.5f - 8 * 0.5f)), ori, vec2(0.25f, 1.0f), ivec2(8, 4), axiom::hsv_color(rand() * 0.125f + 2.25f, 0.65f, 1.0f), 2.0f);
 
         if(i != 0) {
             axiom::position_constraint pc;
@@ -836,13 +921,13 @@ int main(int argc, char **argv) {
     }
     
     ori = random_orientation(rand);
-    create_capsule(vec3(0.0f, -12.0f, 6.0f), ori, vec2(0.25f, 16.0f), ivec2(12, 8), vec3(0.5f, 0.0f, 1.0f) * 0.65f + 0.35f, 16.0f);
+    create_capsule(vec3(0.0f, -12.0f, 6.0f), ori, vec2(0.25f, 16.0f), ivec2(8, 4), vec3(0.5f, 0.0f, 1.0f) * 0.65f + 0.35f, 16.0f);
     
     ori = random_orientation(rand);
     create_cube(vec3(12.0f, 0.0f, 6.0f), ori, axiom::sqrt3 * 3, vec3(1.0f, 0.0f, 0.5f) * 0.65f + 0.35f, 32.0f);
     
     ori = random_orientation(rand);
-    create_capsule(vec3(-12.0f, 0.0f, 6.0f), ori, vec2(1.5f, 6.0f), ivec2(12, 8), vec3(1.0f, 0.75f, 0.0f) * 0.65f + 0.35f, 64.0f);
+    create_capsule(vec3(-12.0f, 0.0f, 6.0f), ori, vec2(1.5f, 6.0f), ivec2(8, 4), vec3(1.0f, 0.75f, 0.0f) * 0.65f + 0.35f, 64.0f);
 
     {
         mat3 main_ori = glm::identity<mat3>();//random_orientation(rand);
@@ -951,7 +1036,7 @@ int main(int argc, char **argv) {
 
     static bool do_render_grid = false;
 
-    auto target_callback = [&window, camera_entity](axiom::render_target& target) {
+    auto target_callback = [&ctx, camera_entity](axiom::render_target& target) {
         target.framebuffer.bind();
         target.framebuffer.clear(vec4(0.0f, 0.0f, 0.0f, 1.0f));
 
@@ -1018,17 +1103,17 @@ int main(int argc, char **argv) {
                 }
             }
 
-            glDisable(GL_DEPTH_TEST);
+            axiom::enable_depth_test();
 
             render_billboards(camera_entity, origins, textures, colors, sizes, target.framebuffer.size, axiom::get_texture("ui"));
             render_lines(camera_entity, points, pcolors);
 
-            glEnable(GL_DEPTH_TEST);
+            axiom::disable_depth_test();
         }
     };
 
     
-    auto vrender_callback = [&window, camera_entity_vis](axiom::render_target& target) {
+    auto vrender_callback = [&ctx, camera_entity_vis](axiom::render_target& target) {
         target.framebuffer.bind();
         target.framebuffer.clear(vec4(0.0f, 0.0f, 0.0f, 1.0f));
 
@@ -1040,7 +1125,7 @@ int main(int argc, char **argv) {
         //render_grid(camera_entity_vis, target.framebuffer);
     };
 
-    auto widget_callback = [camera_entity, &window](axiom::render_widget *self) {
+    auto widget_callback = [camera_entity, &ctx](axiom::render_widget *self) {
         static bool movement_capture = false;
         static bool raycast_capture = false;
         static float movement_speed = 8.0f;
@@ -1050,10 +1135,11 @@ int main(int argc, char **argv) {
         
         axiom::transform3d& camera_transform = axiom::ecs.get_component<axiom::transform3d>(camera_entity);
         axiom::ui_system& ui_system = axiom::ecs.get_system<axiom::ui_system>();
+        axiom::render_system& render_system = axiom::ecs.get_system<axiom::render_system>();
         auto& psystem = axiom::ecs.get_system<axiom::physics_system3d>();
 
         if(ui_system.click_capture == self->self) {
-            if(ui_system.window->input_map[axiom::input_code::KEY_LEFT_CTRL]) {
+            if(render_system.ctx->input_map[axiom::input_code::KEY_LEFT_CTRL]) {
                 if(raycast_capture == false) {
                     raycast_capture = true;
                     
@@ -1062,7 +1148,7 @@ int main(int argc, char **argv) {
 
                     //
 
-                    vec2 screen_pos = (ui_system.window->cursor_pos - self->position) / self->size;
+                    vec2 screen_pos = (render_system.ctx->cursor_pos - self->position) / self->size;
                     screen_pos = screen_pos * 2.0f - 1.0f;
 
                     vec4 vertex = vec4(screen_pos, 0.5f, 1.0f);
@@ -1110,7 +1196,7 @@ int main(int argc, char **argv) {
                 }
             } else {
                 if(movement_capture == false && raycast_capture == false) {
-                    ui_system.window->disable_cursor();
+                    render_system.ctx->disable_cursor();
                     movement_capture = true;
                 }
             }
@@ -1122,14 +1208,14 @@ int main(int argc, char **argv) {
                 constraint_index = 0xFFFFFFFF;
             }
 
-            if(movement_capture) ui_system.window->show_cursor();
+            if(movement_capture) render_system.ctx->show_cursor();
             movement_capture = false;
             raycast_capture = false;
         }
 
         if(ui_system.hover_capture == self->self) {
-            if(ui_system.window->scroll_delta != 0.0f) {
-                movement_speed *= pow(2, ui_system.window->scroll_delta * 0.5f);
+            if(render_system.ctx->scroll_delta != 0.0f) {
+                movement_speed *= pow(2, render_system.ctx->scroll_delta * 0.5f);
             }
         }
 
@@ -1139,34 +1225,34 @@ int main(int argc, char **argv) {
                 float rotate_value = 0.0f;
 
                 vec3 rotate = vec3(0.0f);
-                rotate.x = -ui_system.window->cursor_delta.x;
-                rotate.y = -ui_system.window->cursor_delta.y;
+                rotate.x = -render_system.ctx->cursor_delta.x;
+                rotate.y = -render_system.ctx->cursor_delta.y;
 
-                if(ui_system.window->input_map[axiom::input_code::KEY_Q]) {
+                if(render_system.ctx->input_map[axiom::input_code::KEY_Q]) {
                     rotate.z -= 1;
                 }
-                if(ui_system.window->input_map[axiom::input_code::KEY_E]) {
+                if(render_system.ctx->input_map[axiom::input_code::KEY_E]) {
                     rotate.z += 1;
                 }
 
                 //
 
-                if(ui_system.window->input_map[axiom::input_code::KEY_A]) {
+                if(render_system.ctx->input_map[axiom::input_code::KEY_A]) {
                     raw_movement.x -= 1;
                 }
-                if(ui_system.window->input_map[axiom::input_code::KEY_D]) {
+                if(render_system.ctx->input_map[axiom::input_code::KEY_D]) {
                     raw_movement.x += 1;
                 } 
-                if(ui_system.window->input_map[axiom::input_code::KEY_S]) {
+                if(render_system.ctx->input_map[axiom::input_code::KEY_S]) {
                     raw_movement.z += 1;
                 }
-                if(ui_system.window->input_map[axiom::input_code::KEY_W]) {
+                if(render_system.ctx->input_map[axiom::input_code::KEY_W]) {
                     raw_movement.z -= 1;
                 }
-                if(ui_system.window->input_map[axiom::input_code::KEY_SPACE]) {
+                if(render_system.ctx->input_map[axiom::input_code::KEY_SPACE]) {
                     raw_movement.y += 1;
                 }
-                if(ui_system.window->input_map[axiom::input_code::KEY_LEFT_SHIFT]) {
+                if(render_system.ctx->input_map[axiom::input_code::KEY_LEFT_SHIFT]) {
                     raw_movement.y -= 1;
                 }
 
@@ -1192,7 +1278,7 @@ int main(int argc, char **argv) {
 
                 //
 
-                vec2 screen_pos = (ui_system.window->cursor_pos - self->position) / self->size;
+                vec2 screen_pos = (render_system.ctx->cursor_pos - self->position) / self->size;
                 screen_pos = screen_pos * 2.0f - 1.0f;
 
                 vec4 vertex = vec4(screen_pos, 0.5f, 1.0f);
@@ -1218,7 +1304,7 @@ int main(int argc, char **argv) {
     };
     
     
-    auto visualizer_callback = [camera_entity_vis, &window](axiom::render_widget *self) {
+    auto visualizer_callback = [camera_entity_vis, &ctx](axiom::render_widget *self) {
         static bool movement_capture = false;
         static float zoom = sqrt(2.0f * 1.5f);
         static float angle_x = 0.0f;
@@ -1226,20 +1312,21 @@ int main(int argc, char **argv) {
         
         axiom::transform3d& camera_transform = axiom::ecs.get_component<axiom::transform3d>(camera_entity_vis);
         axiom::ui_system& ui_system = axiom::ecs.get_system<axiom::ui_system>();
+        axiom::render_system& render_system = axiom::ecs.get_system<axiom::render_system>();
 
         if(ui_system.click_capture == self->self) {
             if(movement_capture == false) {
-                ui_system.window->disable_cursor();
+                render_system.ctx->disable_cursor();
                 movement_capture = true;
             }
         } else {
-            if(movement_capture) ui_system.window->show_cursor();
+            if(movement_capture) render_system.ctx->show_cursor();
             movement_capture = false;
         }
 
         if(ui_system.hover_capture == self->self) {
-            if(ui_system.window->scroll_delta != 0.0f) {
-                zoom *= pow(2, -ui_system.window->scroll_delta * 0.5f);
+            if(render_system.ctx->scroll_delta != 0.0f) {
+                zoom *= pow(2, -render_system.ctx->scroll_delta * 0.5f);
             }
         }
 
@@ -1251,13 +1338,13 @@ int main(int argc, char **argv) {
                 float rotate_value = 0.0f;
 
                 vec3 rotate = vec3(0.0f);
-                rotate.x = -ui_system.window->cursor_delta.x;
-                rotate.y = -ui_system.window->cursor_delta.y;
+                rotate.x = -render_system.ctx->cursor_delta.x;
+                rotate.y = -render_system.ctx->cursor_delta.y;
 
-                if(ui_system.window->input_map[axiom::input_code::KEY_Q]) {
+                if(render_system.ctx->input_map[axiom::input_code::KEY_Q]) {
                     rotate.z -= 1;
                 }
-                if(ui_system.window->input_map[axiom::input_code::KEY_E]) {
+                if(render_system.ctx->input_map[axiom::input_code::KEY_E]) {
                     rotate.z += 1;
                 }
 
@@ -1317,7 +1404,7 @@ int main(int argc, char **argv) {
     static axiom::ui_system& ui_system = axiom::ecs.get_system<axiom::ui_system>(); 
     
     {
-        axiom::screen_widget::insert("Axiom", axiom::color_red, &window);
+        axiom::screen_widget::insert("Axiom", axiom::color_red, &ctx);
         axiom::render_widget::insert(rt, 0, widget_callback);
         //
 
@@ -1364,14 +1451,14 @@ int main(int argc, char **argv) {
         axiom::row_widget::insert();
 
         axiom::button_widget::insert(vec2(32.0f), axiom::color_purple, vec4(0, 112, 16, 16), 
-            [](axiom::button_widget& self) {
+            [&render_system](axiom::button_widget& self) {
                 static bool update = true;
                 static bool psym = false;
 
                 auto* physics = &axiom::ecs.get_system<axiom::physics_system3d>();
                 auto& parent_widget = ui_system.widgets[self.parent];
 
-                if(self.pressed || ui_system.window->pressed_buttons.contains(axiom::input_code::KEY_F5)) {
+                if(self.pressed || render_system.ctx->pressed_buttons.contains(axiom::input_code::KEY_F5)) {
                     physics->sim_active = !physics->sim_active;
                     update = true;
                 }
@@ -1467,9 +1554,9 @@ int main(int argc, char **argv) {
                             {
                                 "Settings", 
                                 {},
-                                []() {
+                                [&]() {
                                     ivec2 size = uvec2(500, 200);
-                                    ivec2 pos = (ui_system.window->size - size) / 2;
+                                    ivec2 pos = (render_system.ctx->size - size) / 2;
 
                                     ui_system.input_reset();
                                     ui_system.position(axiom::position_mode::TOP_LEFT);
@@ -1500,9 +1587,9 @@ int main(int argc, char **argv) {
                                                 axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(-90.0f, 90.0f), 0.0f, 35.0f, "", 
                                                     [](axiom::slider_widget& self) {
                                                         if(self.pressed) {
-                                                            axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].altitude = self.current_value;
+                                                            axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->altitude = self.current_value;
                                                         } else {
-                                                            self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].altitude;
+                                                            self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->altitude;
                                                         }
                                                         
                                                         self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
@@ -1514,9 +1601,9 @@ int main(int argc, char **argv) {
                                                 axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(-180.0f, 180.0f), 0.0f, 0.0f, "", 
                                                     [](axiom::slider_widget& self) {
                                                         if(self.pressed) {
-                                                            axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].azimuth = self.current_value;
+                                                            axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->azimuth = self.current_value;
                                                         } else {
-                                                            self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].azimuth;
+                                                            self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->azimuth;
                                                         }
                                                         
                                                         self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
@@ -1528,9 +1615,9 @@ int main(int argc, char **argv) {
                                                 axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(0.0f, 1.0f), 0.0f, 1.0f, "", 
                                                     [](axiom::slider_widget& self) {
                                                         if(self.pressed) {
-                                                            axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].contrast = self.current_value;
+                                                            axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->contrast = self.current_value;
                                                         } else {
-                                                            self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].contrast;
+                                                            self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->contrast;
                                                         }
 
                                                         self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
@@ -1542,9 +1629,9 @@ int main(int argc, char **argv) {
                                                 axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(1.0f, 64.0), 1.0f, 16.0f, "", 
                                                     [](axiom::slider_widget& self) {
                                                         if(self.pressed) {
-                                                            axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].base_pixel_size = 1.0f / self.current_value;
+                                                            axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->base_pixel_size = 1.0f / self.current_value;
                                                         } else {
-                                                            self.current_value = 1.0f / axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].base_pixel_size;
+                                                            self.current_value = 1.0f / axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->base_pixel_size;
                                                         }
 
                                                         self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
@@ -1556,9 +1643,9 @@ int main(int argc, char **argv) {
                                                 axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(2.0f, 16.0f), 1.0f, 8.0f, "", 
                                                     [](axiom::slider_widget& self) {
                                                         if(self.pressed) {
-                                                            axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].cascade_factor = self.current_value;
+                                                            axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->cascade_factor = self.current_value;
                                                         } else {
-                                                            self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].cascade_factor;
+                                                            self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->cascade_factor;
                                                         }
 
                                                         self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
@@ -1570,9 +1657,9 @@ int main(int argc, char **argv) {
                                                 axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(0.0f, 0.5f), 0.015625f, 1.0f, "", 
                                                     [](axiom::slider_widget& self) {
                                                         if(self.pressed) {
-                                                            axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].blend_radius = self.current_value;
+                                                            axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->blend_radius = self.current_value;
                                                         } else {
-                                                            self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0].blend_radius;
+                                                            self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->blend_radius;
                                                         }
 
                                                         self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
@@ -1657,9 +1744,9 @@ int main(int argc, char **argv) {
                             {
                                 "Lipsum", 
                                 {},
-                                []() {
+                                [&]() {
                                     ivec2 size = uvec2(500, 200);
-                                    ivec2 pos = (ui_system.window->size - size) / 2;
+                                    ivec2 pos = (render_system.ctx->size - size) / 2;
 
                                     std::string lipsum = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed pulvinar sit amet urna eget commodo. Morbi pulvinar ac mauris ut tempus. Mauris aliquet ultrices nulla. In feugiat rutrum pulvinar. Nulla dictum nisl nec auctor venenatis. Etiam vel pretium metus, quis auctor tortor. Quisque quam metus, scelerisque id sagittis ac, iaculis vitae leo. Sed dapibus purus dolor, et vestibulum velit sagittis et. Aliquam vel gravida lectus, eget viverra velit. Cras bibendum, risus in bibendum volutpat, tortor dui cursus augue, quis vulputate ante nibh a ante. Nam varius arcu ac felis vestibulum suscipit. Aliquam mauris justo, placerat sit amet tincidunt eu, auctor eu nunc. Donec suscipit arcu et risus sagittis porttitor. Praesent tellus mauris, semper quis dictum sit amet, tristique in nisl. Aenean nec metus feugiat neque porttitor vulputate vel vitae sem.\nQuisque vulputate imperdiet magna ac porttitor. Vivamus eget neque sed purus tempor placerat pharetra vitae felis. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Nullam dui justo, tempus ut neque sed, finibus vestibulum eros. Morbi egestas risus non justo rhoncus blandit. Nulla facilisis a lacus vitae rutrum. Praesent facilisis ligula et lacus semper tincidunt. Mauris at urna justo. Vivamus ornare molestie turpis vulputate auctor.\nSuspendisse pellentesque, urna consectetur suscipit dapibus, leo felis scelerisque sapien, nec elementum risus risus ac ipsum. Cras interdum massa neque. In lacinia volutpat ex at pretium. Pellentesque eleifend eu elit eu fermentum. Ut eros erat, viverra vel feugiat vitae, pulvinar id dui. Sed mattis lorem ac sapien eleifend, vitae finibus turpis suscipit. Mauris viverra nunc non eros efficitur, non efficitur odio porttitor. Aenean sed eros vitae tortor hendrerit pretium at a tellus. Nulla vel accumsan justo. Etiam dignissim ac justo nec pharetra. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Aliquam maximus aliquam tempus. Aenean et dui ullamcorper, consectetur arcu non, condimentum est. Vivamus in neque sit amet dolor feugiat sollicitudin at quis felis. In hac habitasse platea dictumst.";
 
@@ -1677,9 +1764,9 @@ int main(int argc, char **argv) {
                             {
                                 "Visualizer", 
                                 {},
-                                [rtv, visualizer_callback]() {
+                                [rtv, visualizer_callback, &render_system]() {
                                     ivec2 size = uvec2(500, 500);
-                                    ivec2 pos = (ui_system.window->size - size) / 2;
+                                    ivec2 pos = (render_system.ctx->size - size) / 2;
 
                                     ui_system.input_reset();
                                     ui_system.position(axiom::position_mode::TOP_LEFT);
@@ -1711,8 +1798,17 @@ int main(int argc, char **argv) {
     //
 
     auto main_target_callback = [](axiom::render_target& target) {
+        static axiom::vertices vertices = []() {
+            axiom::vertices vertices;
+            vertices.init();
+
+            return std::move(vertices);
+        }();
+
         axiom::ui_system& ui_system = axiom::ecs.get_system<axiom::ui_system>();
-        auto& vertices = axiom::get_vertices();
+        axiom::render_system& render_system = axiom::ecs.get_system<axiom::render_system>();
+
+        if(target.framebuffer.size != render_system.ctx->size) target.framebuffer.resize(render_system.ctx->size);
 
         static axiom::storage_buffer storage_buffer;
         if (!storage_buffer.initialized)
@@ -1728,21 +1824,21 @@ int main(int argc, char **argv) {
         for(auto& cs : ui_system.clip_spaces) {
             spaces.push_back({cs});
         }
-        storage_buffer.buffer_data(spaces.data(), spaces.size() * sizeof(cspace), GL_STREAM_DRAW);
+        storage_buffer.buffer_data(spaces.data(), spaces.size() * sizeof(cspace), axiom::usage_type::STREAM_DRAW);
 
         //
 
-        vertices.vertex_buffer_data(ui_system.vertices.data(), ui_system.vertices.size(), sizeof(axiom::ui_vertex), GL_STREAM_DRAW);
+        vertices.vertex_buffer_data(ui_system.vertices.data(), ui_system.vertices.size(), sizeof(axiom::ui_vertex), axiom::usage_type::STREAM_DRAW);
 
-        vertices.add_vertex_attribute(0, 3, GL_FLOAT, false, sizeof(axiom::ui_vertex), 0);
-        vertices.add_vertex_attribute(1, 2, GL_FLOAT, false, sizeof(axiom::ui_vertex), sizeof(float) * 3);
-        vertices.add_vertex_attribute(2, 4, GL_FLOAT, false, sizeof(axiom::ui_vertex), sizeof(float) * 5);
-        vertices.add_vertex_attribute(3, 1, GL_UNSIGNED_INT, false, sizeof(axiom::ui_vertex), sizeof(float) * 9);
-        vertices.add_vertex_attribute(4, 1, GL_UNSIGNED_INT, false, sizeof(axiom::ui_vertex), sizeof(float) * 10);
+        vertices.add_vertex_attribute(0, 3, axiom::var_type::FLOAT, false, sizeof(axiom::ui_vertex), 0);
+        vertices.add_vertex_attribute(1, 2, axiom::var_type::FLOAT, false, sizeof(axiom::ui_vertex), sizeof(float) * 3);
+        vertices.add_vertex_attribute(2, 4, axiom::var_type::FLOAT, false, sizeof(axiom::ui_vertex), sizeof(float) * 5);
+        vertices.add_vertex_attribute(3, 1, axiom::var_type::UINT, false, sizeof(axiom::ui_vertex), sizeof(float) * 9);
+        vertices.add_vertex_attribute(4, 1, axiom::var_type::UINT, false, sizeof(axiom::ui_vertex), sizeof(float) * 10);
 
         //
 
-        mat3 view_matrix = glm::translate(glm::identity<mat3>(), vec2(-1.0f, -1.0f)) * glm::scale(glm::identity<mat3>(), vec2(2.0f / ui_system.window->size.x, 2.0f / ui_system.window->size.y));
+        mat3 view_matrix = glm::translate(glm::identity<mat3>(), vec2(-1.0f, -1.0f)) * glm::scale(glm::identity<mat3>(), vec2(2.0f / render_system.ctx->size.x, 2.0f / render_system.ctx->size.y));
         mat3 trans_matrix = glm::identity<mat3>();
 
         axiom::get_shader("ui").use();
@@ -1766,7 +1862,7 @@ int main(int argc, char **argv) {
         target.framebuffer.textures[2].bind(1);
 
         axiom::get_shader("ui_composite").use();
-        glDrawArrays(GL_TRIANGLES, 0, 6);
+        axiom::draw_triangles(0, 6);
     };
 
     format = {axiom::texture_format::RGBA8, axiom::texture_format::RGBA8, axiom::texture_format::RGBA8, axiom::texture_format::DEPTHF};
@@ -1777,10 +1873,9 @@ int main(int argc, char **argv) {
         format,
         attachment, {}
     );
-    window.attach(main_target);
 
-    while (!window.should_close) {
-        window.poll_events();
+    while (!ctx.should_close) {
+        ctx.poll_events();
 
         for(uint e : axiom::ecs.get_system<axiom::physics_system3d>().collectors[0].entities) {
             axiom::collider3d& collider = axiom::ecs.get_component<axiom::collider3d>(e);
@@ -1788,7 +1883,25 @@ int main(int argc, char **argv) {
             //std::cout << glm::length(collider.iit_rot * collider.angular_momentum) << " ";
         }
 
+        //
+        
+        axiom::enable_blend();
+        axiom::enable_depth_test();
+
+        axiom::set_depth_func(axiom::depth_func::GREATER_EQUAL); //glDepthFunc(GL_GEQUAL);
+        axiom::set_clear_depth(0.0f); //glClearDepth(0.0f);
+        axiom::set_depth_range(0.0f, 1.0f); //glDepthRange(0, 1);
+        //set_clip_control(); //glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
+
+        axiom::disable_depth_clamp();
+        axiom::set_blend_func_separate(axiom::blend_func::SRC_ALPHA, axiom::blend_func::ONE_MINUS_SRC_ALPHA, axiom::blend_func::SRC_ALPHA, axiom::blend_func::ONE);
+
+        //
+        
         axiom::ecs.frame();
+        
+        axiom::blit(ivec4(0, 0, main_target->framebuffer.size), ivec4(0, 0, ctx.size), &main_target->framebuffer, nullptr, axiom::texture_attachment::COLOR0, axiom::texture_attachment::COLOR0, true, false, false);
+        ctx.swap_buffers();
     }
 }
 

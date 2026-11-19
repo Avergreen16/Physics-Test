@@ -5,15 +5,14 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "${vcpkgRoot}/x86-windows/include",
-
-                "external/axiom/include",
-                "external/axiom/src",
-                "external/axiom",
-                "external/glad/include",
-                "external/glm",
-                "external/glfw/include",
-                "external/xsimd/include",
-                "external/json/include"
+                "${workspaceFolder}/external/axiom/include",
+                "${workspaceFolder}/external/axiom/src",
+                "${workspaceFolder}/external/axiom",
+                "${workspaceFolder}/external/glad/include",
+                "${workspaceFolder}/external/glm",
+                "${workspaceFolder}/external/glfw/include",
+                "${workspaceFolder}/external/xsimd/include",
+                "${workspaceFolder}/external/json/include"
             ],
             "defines": [
                 "_DEBUG",

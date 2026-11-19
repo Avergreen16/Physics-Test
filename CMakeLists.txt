@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(Physics-Test
     VERSION 0
@@ -16,18 +17,20 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(BUILD_SHARED_LIBS OFF)
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/wrappers/lua)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glfw)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glad)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glm)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/freetype)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/harfbuzz)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/addie)
-
+set(AXIOM_INCLUDE_WRAPPER ON)
 set(AXIOM_INCLUDE_RENDER ON)
 set(AXIOM_INCLUDE_UI ON)
 set(AXIOM_INCLUDE_PHYSICS3D ON)
 set(AXIOM_INCLUDE_PHYSICS2D ON)
+set(AXIOM_OPENGL ON)
+
+add_compile_definitions(AXIOM_OPENGL)
+
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/wrappers/lua)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glfw)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glad)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/glm)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/addie)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/axiom)
 
 # icon.rc
@@ -45,8 +48,6 @@ add_executable(example-3d
 target_include_directories(example-3d PUBLIC 
     ${CMAKE_SOURCE_DIR}/external/axiom
     ${CMAKE_SOURCE_DIR}/external/lua
-    ${CMAKE_SOURCE_DIR}/external/freetype/include
-    ${CMAKE_SOURCE_DIR}/external/harfbuzz/src
 
     ${CMAKE_SOURCE_DIR}/src
 )
@@ -56,8 +57,6 @@ set_target_properties(example-3d PROPERTIES OUTPUT_NAME "example-3d")
 target_link_libraries(example-3d PRIVATE
     Axiom
     lua
-    freetype
-    harfbuzz
 )
 
 target_compile_options(example-3d PRIVATE
@@ -71,7 +70,7 @@ target_compile_options(example-3d PRIVATE
 
 #####
 
-
+#[[
 add_executable(example-2d
     src/2d/main.cpp
     ${CMAKE_SOURCE_DIR}/external/pugixml/src/pugixml.cpp
@@ -125,3 +124,4 @@ target_compile_options(addie PRIVATE
     -Wtemplate-body
     -g
 )
+]]

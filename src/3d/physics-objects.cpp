@@ -894,7 +894,7 @@ void create_mesh(axiom::color_mesh3d& mesh, std::vector<vec3>& elements, vec3 co
         bool o2 = length(n2) == 0.0f;
 
         if(o0 || o1 || o2) {
-            vec3 normal = normalize(cross(v0.position - v2.position, v1.position - v2.position));
+            vec3 normal = cross(v0.position - v2.position, v1.position - v2.position);
 
             if(o0) n0 = normal;
             if(o1) n1 = normal;
@@ -931,6 +931,12 @@ void create_mesh(axiom::color_mesh3d& mesh, std::vector<vec3>& elements, vec3 co
             mesh.vs[i].normal = normalize(blend_norm[v0.element]);
             mesh.vs[i + 1].normal = normalize(blend_norm[v1.element]);
             mesh.vs[i + 2].normal = normalize(blend_norm[v2.element]);
+        }
+    } else {
+        for(uint i = 0; i < surface_indices.size(); i += 3) {
+            mesh.vs[i].normal = normalize(mesh.vs[i].normal);
+            mesh.vs[i + 1].normal = normalize(mesh.vs[i + 1].normal);
+            mesh.vs[i + 2].normal = normalize(mesh.vs[i + 2].normal);
         }
     }
     
@@ -1252,16 +1258,14 @@ uint create_capsule(vec3 position, mat3 orientation, vec2 dimensions, ivec2 vert
 
     float offset = (dimensions.y - dimensions.x) * 0.5f;
 
-    for(int j = 0; j < vertex_density.y + 1; ++j) {
-        float fr = float(j) / (vertex_density.y);
-
-        float num_vertices = floor(glm::mix(float(vertex_density.x), 1.0f, fr));
+    for(int j = 0; j < vertex_density.y; ++j) {
+        float fr = float(j) / vertex_density.y;
 
         float vangle = fr * 0.5 * axiom::pi;
         vec2 rotv = vec2(cos(vangle), sin(vangle));
 
-        for(int i = 0; i < num_vertices; ++i) {
-            float angle = float(i) / num_vertices * 2.0f * axiom::pi;
+        for(int i = 0; i < vertex_density.x; ++i) {
+            float angle = float(i) / vertex_density.x * 2.0f * axiom::pi;
 
             vs.push_back(vec3(cos(angle) * rotv.x * dimensions.x * 0.5f, sin(angle) * rotv.x * dimensions.x * 0.5f, rotv.y * dimensions.x * 0.5f + offset));
             vs.push_back(-vec3(cos(angle) * rotv.x * dimensions.x * 0.5f, sin(angle) * rotv.x * dimensions.x * 0.5f, rotv.y * dimensions.x * 0.5f + offset));
