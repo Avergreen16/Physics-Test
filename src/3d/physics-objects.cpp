@@ -770,7 +770,7 @@ std::vector<axiom::shape_face> get_faces(std::vector<vec3>& elements) {
             axiom::shape_face face_i = faces[i];
             axiom::shape_face face_j = faces[j];
 
-            if(dot(face_i.normal, face_j.normal) > 0.999f) {
+            if(dot(face_i.normal, face_j.normal) > 0.99999f) {
                 std::vector<uint> new_i;
                 std::set_union(face_i.vertices.begin(), face_i.vertices.end(), face_j.vertices.begin(), face_j.vertices.end(), std::back_inserter(new_i));
 

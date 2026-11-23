@@ -291,7 +291,7 @@ vec2 newton(vec2 a, vec2 b, vec2 c, vec2 d, vec2 p) {
 
 axiom::texture_asset terrain_generator::render() {
     size = 0xC0;
-    axiom::random32 rand(0x1F);
+    axiom::random32 rand(0x4F4);
 
     struct voronoi_cell {
         vec3 position;

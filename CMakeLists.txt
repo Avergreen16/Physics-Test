@@ -70,7 +70,6 @@ target_compile_options(example-3d PRIVATE
 
 #####
 
-#[[
 add_executable(example-2d
     src/2d/main.cpp
     ${CMAKE_SOURCE_DIR}/external/pugixml/src/pugixml.cpp
@@ -100,6 +99,7 @@ target_compile_options(example-2d PRIVATE
     -g
 )
 
+#[[
 add_executable(addie
     src/AI/main.cpp
 )

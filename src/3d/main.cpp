@@ -6,6 +6,7 @@
 
 #include "physics-objects.hpp"
 #include "terraingen.hpp"
+//#include "ui.cpp"
 
 bool debug_mode = false;
 
@@ -306,7 +307,7 @@ void render_lines(uint camera, std::vector<vec3> points, std::vector<vec4> color
 }
 
 auto base_render = [](uint camera_entity, axiom::framebuffer& framebuffer) {
-    static auto stars = create_stars(0x4000);
+    static auto stars = create_stars(0x100000);
     static auto star_vertices = create_star_vertices(stars);
     
     axiom::disable_depth_test();
@@ -552,6 +553,7 @@ auto visualizer_render = [](uint camera_entity, axiom::framebuffer& framebuffer)
     axiom::transform3d& camera_transform = axiom::ecs.get_component<axiom::transform3d>(camera_entity);
     axiom::camera3d& camera = axiom::ecs.get_component<axiom::camera3d>(camera_entity);
 
+    /*
     static std::vector<float> heights = []() {
         std::vector<float> ret(256 * 256, 0.0f);
 
@@ -599,9 +601,9 @@ auto visualizer_render = [](uint camera_entity, axiom::framebuffer& framebuffer)
         return std::move(ret);
     }();
 
-    /* FLAG
     static axiom::texture texture;
 
+    if(texture.id != 0xFFFFFFFF) texture.delete_texture();
     texture = axiom::texture((uint8_t*)heights.data(), {256, 256, 0}, GL_TEXTURE_2D, axiom::texture_format::RF);
 
     axiom::transform3d grid_transform;
@@ -626,19 +628,23 @@ auto visualizer_render = [](uint camera_entity, axiom::framebuffer& framebuffer)
     */
     
     // planet
-    /*
-    auto& vertices = axiom::get_vertices();
+    axiom::vertices vertices = []() {
+        axiom::vertices vertices;
+        vertices.init();
+        
+        std::vector<vec2> vs = {
+            vec2(-1.0f, -1.0f),
+            vec2(1.0f, -1.0f),
+            vec2(-1.0f, 1.0f),
+            vec2(1.0f, 1.0f)};
 
-    std::vector<vec2> vs = {
-        vec2(-1.0f, -1.0f),
-        vec2(1.0f, -1.0f),
-        vec2(-1.0f, 1.0f),
-        vec2(1.0f, 1.0f)};
+        vs = {vs[0], vs[1], vs[3], vs[0], vs[3], vs[2]};
 
-    vs = {vs[0], vs[1], vs[3], vs[0], vs[3], vs[2]};
+        vertices.vertex_buffer_data(vs.data(), vs.size(), sizeof(vec2), axiom::usage_type::STATIC_DRAW);
+        vertices.add_vertex_attribute(0, 2, axiom::var_type::FLOAT, false, sizeof(vec2), 0);
 
-    vertices.vertex_buffer_data(vs.data(), vs.size(), sizeof(vec2), axiom::usage_type::STATIC_DRAW);
-    vertices.add_vertex_attribute(0, 2, axiom::var_type::FLOAT, false, sizeof(vec2), 0);
+        return std::move(vertices);
+    }();
 
     axiom::transform3d grid_transform;
     grid_transform.position = vec3(0.0f);
@@ -653,13 +659,12 @@ auto visualizer_render = [](uint camera_entity, axiom::framebuffer& framebuffer)
     framebuffer.textures[framebuffer.depth_texture].bind(0);
     vertices.bind();
     
-    planet_texture.bind(0);
+    //planet_texture.bind(0);
     axiom::push_uniform(0, &model);
     axiom::push_uniform(1, &view);
     axiom::push_uniform(2, &proj);
 
     vertices.draw_vertices_triangles();
-    */
 
     // terrain
     /*
@@ -743,9 +748,6 @@ auto visualizer_render = [](uint camera_entity, axiom::framebuffer& framebuffer)
 };
 
 int main(int argc, char **argv) {
-    //gen.init();
-    //auto planet_asset = gen.render();
-
     axiom::context ctx(ivec2(256), ivec2(512), 0, "Axiom", false);
 
     axiom::ui_init();
@@ -755,8 +757,6 @@ int main(int argc, char **argv) {
     {
         axiom::render_system& rsys = axiom::ecs.get_system<axiom::render_system>();
         axiom::ui_system& usys = axiom::ecs.get_system<axiom::ui_system>();
-        
-        usys.font_handler.process(rsys.resource_root + "/fonts/axiom-large.bdf", "test");
 
         axiom::text_asset vert;
         axiom::text_asset geom;
@@ -816,6 +816,24 @@ int main(int argc, char **argv) {
         frag = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/glyph.frag");
         rsys.shaders.emplace("glyph", std::move(axiom::shader(vert, frag)));
 
+        vert = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/skybox.vert");
+        frag = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/skybox.frag");
+        rsys.shaders.emplace("skybox", std::move(axiom::shader(vert, frag)));
+        
+        vert = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/sphere.vert");
+        frag = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/sphere.frag");
+        rsys.shaders.emplace("sphere", std::move(axiom::shader(vert, frag)));
+        
+        vert = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/stars.vert");
+        geom = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/stars.geom");
+        frag = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/stars.frag");
+        rsys.shaders.emplace("stars", std::move(axiom::shader(vert, geom, frag)));
+        
+        vert = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/heightmap.vert");
+        geom = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/heightmap.geom");
+        frag = axiom::text_asset::load(rsys.resource_root + "/shaders/opengl/heightmap.frag");
+        rsys.shaders.emplace("heightmap", std::move(axiom::shader(vert, geom, frag)));
+
         //
 
         texasset = axiom::texture_asset::load(rsys.resource_root + "/textures/ui.png");
@@ -826,6 +844,9 @@ int main(int argc, char **argv) {
         
         texasset = axiom::texture_asset::load(rsys.resource_root + "/textures/test.png");
         rsys.textures.emplace("test", std::move(axiom::texture(texasset, axiom::texture_format::RGBA8)));
+        
+        texasset = axiom::texture_asset::load(rsys.resource_root + "/textures/flat.png");
+        rsys.textures.emplace("flat", std::move(axiom::texture(texasset, axiom::texture_format::RGBA8, 6)));
     }
 
     axiom::physics_system3d& physics_system = axiom::ecs.get_system<axiom::physics_system3d>();
@@ -840,27 +861,6 @@ int main(int argc, char **argv) {
         axiom::text_asset frag;
         axiom::texture_asset texasset;
 
-        vert = axiom::text_asset::load(render_system.resource_root + "/shaders/opengl/skybox.vert");
-        frag = axiom::text_asset::load(render_system.resource_root + "/shaders/opengl/skybox.frag");
-        render_system.shaders.emplace("skybox", std::move(axiom::shader(vert, frag)));
-        
-        vert = axiom::text_asset::load(render_system.resource_root + "/shaders/opengl/sphere.vert");
-        frag = axiom::text_asset::load(render_system.resource_root + "/shaders/opengl/sphere.frag");
-        render_system.shaders.emplace("sphere", std::move(axiom::shader(vert, frag)));
-        
-        vert = axiom::text_asset::load(render_system.resource_root + "/shaders/opengl/stars.vert");
-        geom = axiom::text_asset::load(render_system.resource_root + "/shaders/opengl/stars.geom");
-        frag = axiom::text_asset::load(render_system.resource_root + "/shaders/opengl/stars.frag");
-        render_system.shaders.emplace("stars", std::move(axiom::shader(vert, geom, frag)));
-        
-        vert = axiom::text_asset::load(render_system.resource_root + "/shaders/opengl/heightmap.vert");
-        geom = axiom::text_asset::load(render_system.resource_root + "/shaders/opengl/heightmap.geom");
-        frag = axiom::text_asset::load(render_system.resource_root + "/shaders/opengl/heightmap.frag");
-        render_system.shaders.emplace("heightmap", std::move(axiom::shader(vert, geom, frag)));
-
-        texasset = axiom::texture_asset::load(render_system.resource_root + "/textures/flat.png");
-
-        render_system.textures.emplace("flat", std::move(axiom::texture(texasset, axiom::texture_format::RGBA8, 6)));
     }
 
     //axiom::ecs.get_system<axiom::ui_system>().font_handler.process_ttf("res/Oxanium-Medium.ttf", "test");
@@ -886,6 +886,9 @@ int main(int argc, char **argv) {
     axiom::update_signature<axiom::transform3d>(sig);
     col = axiom::collector(sig);
     axiom::ecs.create_collector("collider3d", col);
+
+    //gen.init();
+    //auto planet_asset = gen.render();
 
     //planet_texture.load(planet_asset, axiom::texture_format::RGBA8);
 
@@ -921,21 +924,21 @@ int main(int argc, char **argv) {
     }
     
     ori = random_orientation(rand);
-    create_capsule(vec3(0.0f, -12.0f, 6.0f), ori, vec2(0.25f, 16.0f), ivec2(8, 4), vec3(0.5f, 0.0f, 1.0f) * 0.65f + 0.35f, 16.0f);
+    create_capsule(vec3(0.0f, -12.0f, 6.0f), ori, vec2(0.25f, 16.0f), ivec2(10, 4), vec3(0.5f, 0.0f, 1.0f) * 0.65f + 0.35f, 16.0f);
     
     ori = random_orientation(rand);
     create_cube(vec3(12.0f, 0.0f, 6.0f), ori, axiom::sqrt3 * 3, vec3(1.0f, 0.0f, 0.5f) * 0.65f + 0.35f, 32.0f);
     
     ori = random_orientation(rand);
-    create_capsule(vec3(-12.0f, 0.0f, 6.0f), ori, vec2(1.5f, 6.0f), ivec2(8, 4), vec3(1.0f, 0.75f, 0.0f) * 0.65f + 0.35f, 64.0f);
+    create_capsule(vec3(-12.0f, 0.0f, 6.0f), ori, vec2(1.5f, 6.0f), ivec2(10, 4), vec3(1.0f, 0.75f, 0.0f) * 0.65f + 0.35f, 64.0f);
 
     {
         mat3 main_ori = glm::identity<mat3>();//random_orientation(rand);
 
         ivec3 array = ivec3(6);
-        vec3 origin = vec3(0.0f, 0.0f, 6.0f);
-        float size = axiom::sqrt3 * 0.5f;
-        float sep = 0.75f;
+        vec3 origin = vec3(0.0f, 0.0f, 4.0f);
+        float size = axiom::sqrt3 * 0.25f;
+        float sep = 0.35f;
 
         for(int x = 0; x < array.x; ++x) {
             for(int y = 0; y < array.y; ++y) {
@@ -1081,34 +1084,46 @@ int main(int argc, char **argv) {
             for(auto& constraint : physics_system.constraints) {
                 axiom::position_constraint* pconstraint = dynamic_cast<axiom::position_constraint*>(constraint.get());
                 if(pconstraint && pconstraint->b != axiom::NULL_ENTITY) {
-                    origins.push_back(pconstraint->wa);
+                    axiom::transform3d& transform_a = axiom::ecs.get_component<axiom::transform3d>(pconstraint->a);
+                    axiom::transform3d& transform_b = axiom::ecs.get_component<axiom::transform3d>(pconstraint->b);
+                    axiom::collider3d& collider_a = axiom::ecs.get_component<axiom::collider3d>(pconstraint->a);
+                    axiom::collider3d& collider_b = axiom::ecs.get_component<axiom::collider3d>(pconstraint->b);
+
+                    vec3 pos_a = pconstraint->va;
+                    vec3 pos_b = pconstraint->vb;
+
+                    pos_a = transform_a.orientation * pos_a + transform_a.position;
+                    pos_b = transform_b.orientation * pos_b + transform_b.position;
+                    //
+
+                    origins.push_back(pos_a);
                     textures.push_back(vec4(8, 5, 5, 5));
                     colors.push_back(vec4(1.0f));
                     sizes.push_back(vec2(5, 5));
                     
-                    origins.push_back(pconstraint->wb);
+                    origins.push_back(pos_b);
                     textures.push_back(vec4(8, 5, 5, 5));
                     colors.push_back(vec4(1.0f));
                     sizes.push_back(vec2(5, 5));
                     
-                    points.push_back(pconstraint->wa);
+                    points.push_back(pos_a);
                     pcolors.push_back(vec4(1.0f, 1.0f, 0.0f, 1.0f));
-                    points.push_back(pconstraint->wa + pconstraint->ca->get_velocity(pconstraint->ra));
+                    points.push_back(pos_a + collider_a.get_velocity(pos_a - transform_a.position));
                     pcolors.push_back(vec4(1.0f, 1.0f, 0.0f, 1.0f));
                     
-                    points.push_back(pconstraint->wb);
+                    points.push_back(pos_b);
                     pcolors.push_back(vec4(1.0f, 1.0f, 0.0f, 1.0f));
-                    points.push_back(pconstraint->wb + pconstraint->cb->get_velocity(pconstraint->rb));
+                    points.push_back(pos_b + collider_b.get_velocity(pos_b - transform_b.position));
                     pcolors.push_back(vec4(1.0f, 1.0f, 0.0f, 1.0f));
                 }
             }
 
-            axiom::enable_depth_test();
+            axiom::disable_depth_test();
 
             render_billboards(camera_entity, origins, textures, colors, sizes, target.framebuffer.size, axiom::get_texture("ui"));
             render_lines(camera_entity, points, pcolors);
 
-            axiom::disable_depth_test();
+            axiom::enable_depth_test();
         }
     };
 
@@ -1403,10 +1418,209 @@ int main(int argc, char **argv) {
     
     static axiom::ui_system& ui_system = axiom::ecs.get_system<axiom::ui_system>(); 
     
+    //create_ui(camera_entity);
+
     {
+        
+        ui_system.font_handler.process(render_system.resource_root + "/fonts/axiom-large.bdf", "test");
+
         axiom::screen_widget::insert("Axiom", axiom::color_red, &ctx);
         axiom::render_widget::insert(rt, 0, widget_callback);
-        //
+
+        /*
+        axiom::split_widget::insert(axiom::layout_mode::ROW, {axiom::panel_constraint{}, axiom::panel_constraint{}});
+
+        axiom::panel_widget::insert();
+        ui_system.buffer(vec4(0.0f, 0.0f, 0.0f, 2.0f));
+        axiom::tab_widget::insert(20, 2, {
+            axiom::tab{
+                .label = "Scene",
+                .width = 80.0f,
+                .color = axiom::color_red,
+                .swap_in = [&](axiom::tab_widget* self) {
+                    ui_system.input_set(self->self);
+                    ui_system.buffer(vec4(0.0f, 0.0f, 0.0f, 2.0f));
+                    ui_system.position(axiom::position_mode::TOP_LEFT);
+
+                    axiom::panel_widget::insert();
+                    ui_system.buffer(vec4(0.0f));
+                    
+                    axiom::scroll_widget::insert(6.0f, true);
+                    ui_system.buffer(vec4(6.0f));
+
+                    axiom::column_widget::insert();
+                    ui_system.position(axiom::position_mode::CENTER_LEFT);
+
+                    axiom::text_widget::insert("Light Altitude", axiom::text_alignment::LEFT, false);
+                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+
+                    axiom::row_widget::insert();
+                    ui_system.set_attrib(vec2(0.0f, -1), vec2(FLT_MAX, -1), vec2(0.0f));
+
+                    axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(-90.0f, 90.0f), 0.0f, 35.0f, "", 
+                        [](axiom::slider_widget& self) {
+                            if(self.pressed) {
+                                axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->altitude = self.current_value;
+                            } else {
+                                self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->altitude;
+                            }
+                            
+                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                        }
+                    );
+                    ui_system.set_attrib(vec2(0.0f, -1), vec2(FLT_MAX, -1), vec2(0.0f));
+
+                    ui_system.input_step();
+
+                    axiom::text_widget::insert("Light Azimuth", axiom::text_alignment::LEFT, false);
+                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                    axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(-180.0f, 180.0f), 0.0f, 0.0f, "", 
+                        [](axiom::slider_widget& self) {
+                            if(self.pressed) {
+                                axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->azimuth = self.current_value;
+                            } else {
+                                self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->azimuth;
+                            }
+                            
+                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                        }
+                    );
+                    
+                    axiom::text_widget::insert("Light Contrast", axiom::text_alignment::LEFT, false);
+                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                    axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(0.0f, 1.0f), 0.0f, 1.0f, "", 
+                        [](axiom::slider_widget& self) {
+                            if(self.pressed) {
+                                axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->contrast = self.current_value;
+                            } else {
+                                self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->contrast;
+                            }
+
+                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                        }
+                    );
+                    
+                    axiom::text_widget::insert("Pixel Size", axiom::text_alignment::LEFT, false);
+                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                    axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(1.0f, 64.0), 1.0f, 16.0f, "", 
+                        [](axiom::slider_widget& self) {
+                            if(self.pressed) {
+                                axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->base_pixel_size = 1.0f / self.current_value;
+                            } else {
+                                self.current_value = 1.0f / axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->base_pixel_size;
+                            }
+
+                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                        }
+                    );
+                    
+                    axiom::text_widget::insert("Cascade Scale", axiom::text_alignment::LEFT, false);
+                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                    axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(2.0f, 16.0f), 1.0f, 8.0f, "", 
+                        [](axiom::slider_widget& self) {
+                            if(self.pressed) {
+                                axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->cascade_factor = self.current_value;
+                            } else {
+                                self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->cascade_factor;
+                            }
+
+                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                        }
+                    );
+                    
+                    axiom::text_widget::insert("Blend Radius", axiom::text_alignment::LEFT, false);
+                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                    axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(0.0f, 0.5f), 0.015625f, 1.0f, "", 
+                        [](axiom::slider_widget& self) {
+                            if(self.pressed) {
+                                axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->blend_radius = self.current_value;
+                            } else {
+                                self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->blend_radius;
+                            }
+
+                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                        }
+                    );
+                    
+                    axiom::text_widget::insert("Grid", axiom::text_alignment::LEFT, false);
+                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                    ui_system.position(axiom::position_mode::CENTER);
+                    axiom::checkbox_widget::insert(vec2(16.0f), axiom::color_red, false, 
+                        [](axiom::checkbox_widget& self) {
+                            if(self.checked) do_render_grid = true;
+                            else do_render_grid = false;
+                        }
+                    );
+                }
+            },
+            axiom::tab{
+                .label = "Physics",
+                .width = 80.0f,
+                .color = axiom::color_red,
+                .swap_in = [&](axiom::tab_widget* self) {
+                    ui_system.input_set(self->self);
+                    ui_system.buffer(vec4(0.0f, 0.0f, 0.0f, 2.0f));
+                    ui_system.position(axiom::position_mode::TOP_LEFT);
+
+                    axiom::panel_widget::insert();
+                    ui_system.buffer(vec4(0.0f));
+
+                    axiom::scroll_widget::insert(6.0f, true);
+                    ui_system.buffer(vec4(6.0f));
+
+                    axiom::grid_widget::insert(3);
+                    ui_system.position(axiom::position_mode::CENTER_LEFT);
+
+                    axiom::text_widget::insert("Substeps Per Frame", axiom::text_alignment::LEFT, false);
+                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                    axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(1, 32), 1.0f, 0.0f, "", 
+                        [](axiom::slider_widget& self) {
+                            if(self.pressed) {
+                                axiom::ecs.get_system<axiom::physics_system3d>().substeps = self.current_value;
+                            } else {
+                                self.current_value = axiom::ecs.get_system<axiom::physics_system3d>().substeps;
+                            }
+                            
+                            self.text[0]->string = axiom::to_base(int64_t(self.current_value), 10);
+                        }
+                    );
+
+                    axiom::text_widget::insert("Iterations Per Substep", axiom::text_alignment::LEFT, false);
+                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                    axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(1, 32), 1.0f, 0.0f, "", 
+                        [](axiom::slider_widget& self) {
+                            if(self.pressed) {
+                                axiom::ecs.get_system<axiom::physics_system3d>().iterations = self.current_value;
+                            } else {
+                                self.current_value = axiom::ecs.get_system<axiom::physics_system3d>().iterations;
+                            }
+                            
+                            self.text[0]->string = axiom::to_base(int64_t(self.current_value), 10);
+                        }
+                    );
+                    
+                    axiom::text_widget::insert("Physics FPS", axiom::text_alignment::LEFT, false);
+                    axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
+                    axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(8, 128), 0.0f, 0.0f, "", 
+                        [](axiom::slider_widget& self) {
+                            if(self.pressed) {
+                                axiom::ecs.get_system<axiom::physics_system3d>().fps = self.current_value;
+                            } else {
+                                self.current_value = axiom::ecs.get_system<axiom::physics_system3d>().fps;
+                            }
+                            
+                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                        }
+                    );
+                }
+            }
+        });
+
+        ui_system.input_step();
+        
+        ui_system.buffer(vec4(0.0f));
+        axiom::panel_widget::insert();
+        axiom::render_widget::insert(rt, 0, widget_callback);
 
         ui_system.buffer(vec4(4.0f));
         axiom::column_widget::insert();
@@ -1441,7 +1655,7 @@ int main(int argc, char **argv) {
             }
         );
 
-        ui_system.input_step();
+        ui_system.input_step(1);
 
         //
 
@@ -1538,7 +1752,7 @@ int main(int argc, char **argv) {
             }
         );
 
-        ui_system.input_step(2);
+        ui_system.input_step(4);
 
         //
 
@@ -1551,196 +1765,6 @@ int main(int argc, char **argv) {
                 if(w.pressed) {
                     static axiom::menu_node node = {
                         .children = {
-                            {
-                                "Settings", 
-                                {},
-                                [&]() {
-                                    ivec2 size = uvec2(500, 200);
-                                    ivec2 pos = (render_system.ctx->size - size) / 2;
-
-                                    ui_system.input_reset();
-                                    ui_system.position(axiom::position_mode::TOP_LEFT);
-                                    axiom::window_widget::insert("Axiom", size, pos, axiom::color_red);
-                                    axiom::panel_widget::insert();
-                                    ui_system.buffer(vec4(0.0f, 0.0f, 0.0f, 2.0f));
-                                    axiom::tab_widget::insert(20, 2, {
-                                        axiom::tab{
-                                            .label = "Scene",
-                                            .width = 80.0f,
-                                            .color = axiom::color_red,
-                                            .swap_in = [&](axiom::tab_widget* self) {
-                                                ui_system.input_set(self->self);
-                                                ui_system.buffer(vec4(0.0f, 0.0f, 0.0f, 2.0f));
-                                                ui_system.position(axiom::position_mode::TOP_LEFT);
-
-                                                axiom::panel_widget::insert();
-                                                ui_system.buffer(vec4(0.0f));
-                                                
-                                                axiom::scroll_widget::insert(6.0f, true);
-                                                ui_system.buffer(vec4(6.0f));
-
-                                                axiom::grid_widget::insert(3);
-                                                ui_system.position(axiom::position_mode::CENTER_LEFT);
-
-                                                axiom::text_widget::insert("Light Altitude", axiom::text_alignment::LEFT, false);
-                                                axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
-                                                axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(-90.0f, 90.0f), 0.0f, 35.0f, "", 
-                                                    [](axiom::slider_widget& self) {
-                                                        if(self.pressed) {
-                                                            axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->altitude = self.current_value;
-                                                        } else {
-                                                            self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->altitude;
-                                                        }
-                                                        
-                                                        self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
-                                                    }
-                                                );
-
-                                                axiom::text_widget::insert("Light Azimuth", axiom::text_alignment::LEFT, false);
-                                                axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
-                                                axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(-180.0f, 180.0f), 0.0f, 0.0f, "", 
-                                                    [](axiom::slider_widget& self) {
-                                                        if(self.pressed) {
-                                                            axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->azimuth = self.current_value;
-                                                        } else {
-                                                            self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->azimuth;
-                                                        }
-                                                        
-                                                        self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
-                                                    }
-                                                );
-                                                
-                                                axiom::text_widget::insert("Light Contrast", axiom::text_alignment::LEFT, false);
-                                                axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
-                                                axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(0.0f, 1.0f), 0.0f, 1.0f, "", 
-                                                    [](axiom::slider_widget& self) {
-                                                        if(self.pressed) {
-                                                            axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->contrast = self.current_value;
-                                                        } else {
-                                                            self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->contrast;
-                                                        }
-
-                                                        self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
-                                                    }
-                                                );
-                                                
-                                                axiom::text_widget::insert("Pixel Size", axiom::text_alignment::LEFT, false);
-                                                axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
-                                                axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(1.0f, 64.0), 1.0f, 16.0f, "", 
-                                                    [](axiom::slider_widget& self) {
-                                                        if(self.pressed) {
-                                                            axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->base_pixel_size = 1.0f / self.current_value;
-                                                        } else {
-                                                            self.current_value = 1.0f / axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->base_pixel_size;
-                                                        }
-
-                                                        self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
-                                                    }
-                                                );
-                                                
-                                                axiom::text_widget::insert("Cascade Scale", axiom::text_alignment::LEFT, false);
-                                                axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
-                                                axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(2.0f, 16.0f), 1.0f, 8.0f, "", 
-                                                    [](axiom::slider_widget& self) {
-                                                        if(self.pressed) {
-                                                            axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->cascade_factor = self.current_value;
-                                                        } else {
-                                                            self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->cascade_factor;
-                                                        }
-
-                                                        self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
-                                                    }
-                                                );
-                                                
-                                                axiom::text_widget::insert("Blend Radius", axiom::text_alignment::LEFT, false);
-                                                axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
-                                                axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(0.0f, 0.5f), 0.015625f, 1.0f, "", 
-                                                    [](axiom::slider_widget& self) {
-                                                        if(self.pressed) {
-                                                            axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->blend_radius = self.current_value;
-                                                        } else {
-                                                            self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->blend_radius;
-                                                        }
-
-                                                        self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
-                                                    }
-                                                );
-                                                
-                                                axiom::text_widget::insert("Grid", axiom::text_alignment::LEFT, false);
-                                                axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
-                                                ui_system.position(axiom::position_mode::CENTER);
-                                                axiom::checkbox_widget::insert(vec2(16.0f), axiom::color_red, false, 
-                                                    [](axiom::checkbox_widget& self) {
-                                                        if(self.checked) do_render_grid = true;
-                                                        else do_render_grid = false;
-                                                    }
-                                                );
-                                            }
-                                        },
-                                        axiom::tab{
-                                            .label = "Physics",
-                                            .width = 80.0f,
-                                            .color = axiom::color_red,
-                                            .swap_in = [&](axiom::tab_widget* self) {
-                                                ui_system.input_set(self->self);
-                                                ui_system.buffer(vec4(0.0f, 0.0f, 0.0f, 2.0f));
-                                                ui_system.position(axiom::position_mode::TOP_LEFT);
-
-                                                axiom::panel_widget::insert();
-                                                ui_system.buffer(vec4(0.0f));
-
-                                                axiom::scroll_widget::insert(6.0f, true);
-                                                ui_system.buffer(vec4(6.0f));
-
-                                                axiom::grid_widget::insert(3);
-                                                ui_system.position(axiom::position_mode::CENTER_LEFT);
-
-                                                axiom::text_widget::insert("Substeps Per Frame", axiom::text_alignment::LEFT, false);
-                                                axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
-                                                axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(1, 32), 1.0f, 0.0f, "", 
-                                                    [](axiom::slider_widget& self) {
-                                                        if(self.pressed) {
-                                                            axiom::ecs.get_system<axiom::physics_system3d>().substeps = self.current_value;
-                                                        } else {
-                                                            self.current_value = axiom::ecs.get_system<axiom::physics_system3d>().substeps;
-                                                        }
-                                                        
-                                                        self.text[0]->string = axiom::to_base(int64_t(self.current_value), 10);
-                                                    }
-                                                );
-
-                                                axiom::text_widget::insert("Iterations Per Substep", axiom::text_alignment::LEFT, false);
-                                                axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
-                                                axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(1, 32), 1.0f, 0.0f, "", 
-                                                    [](axiom::slider_widget& self) {
-                                                        if(self.pressed) {
-                                                            axiom::ecs.get_system<axiom::physics_system3d>().iterations = self.current_value;
-                                                        } else {
-                                                            self.current_value = axiom::ecs.get_system<axiom::physics_system3d>().iterations;
-                                                        }
-                                                        
-                                                        self.text[0]->string = axiom::to_base(int64_t(self.current_value), 10);
-                                                    }
-                                                );
-                                                
-                                                axiom::text_widget::insert("Physics FPS", axiom::text_alignment::LEFT, false);
-                                                axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
-                                                axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(8, 128), 0.0f, 0.0f, "", 
-                                                    [](axiom::slider_widget& self) {
-                                                        if(self.pressed) {
-                                                            axiom::ecs.get_system<axiom::physics_system3d>().fps = self.current_value;
-                                                        } else {
-                                                            self.current_value = axiom::ecs.get_system<axiom::physics_system3d>().fps;
-                                                        }
-                                                        
-                                                        self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
-                                                    }
-                                                );
-                                            }
-                                        }
-                                    });
-                                }
-                            },
                             {
                                 "Lipsum", 
                                 {},
@@ -1789,6 +1813,7 @@ int main(int argc, char **argv) {
         axiom::button_widget::insert(vec2(100, 16), axiom::color_red, "Super Secret");
         ui_system.position(axiom::position_mode::TOP_LEFT);
         ui_system.buffer(vec4(0.0f));
+        */
     }
 
     {
@@ -1877,6 +1902,18 @@ int main(int argc, char **argv) {
     while (!ctx.should_close) {
         ctx.poll_events();
 
+        if(ctx.pressed_buttons.contains(axiom::input_code::KEY_F11)) {
+            if(ctx.is_fullscreen()) {
+                ctx.restore();
+            } else {
+                ctx.make_fullscreen();
+            }
+        }
+        
+        if(ctx.pressed_buttons.contains(axiom::input_code::KEY_F6)) {
+            render_system.take_screenshot("output/screenshot" + axiom::to_base(int64_t(axiom::get_timestamp()), 10) + ".png");
+        }
+
         for(uint e : axiom::ecs.get_system<axiom::physics_system3d>().collectors[0].entities) {
             axiom::collider3d& collider = axiom::ecs.get_component<axiom::collider3d>(e);
 
@@ -1893,7 +1930,7 @@ int main(int argc, char **argv) {
         axiom::set_depth_range(0.0f, 1.0f); //glDepthRange(0, 1);
         //set_clip_control(); //glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
 
-        axiom::disable_depth_clamp();
+        axiom::enable_depth_clamp();
         axiom::set_blend_func_separate(axiom::blend_func::SRC_ALPHA, axiom::blend_func::ONE_MINUS_SRC_ALPHA, axiom::blend_func::SRC_ALPHA, axiom::blend_func::ONE);
 
         //
