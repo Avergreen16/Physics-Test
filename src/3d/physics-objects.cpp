@@ -157,8 +157,8 @@ void make_world(world_params params) {
 
     // blue moon
     populations.clear();
-    populations.push_back({0.025f, 0.085f, 5.0f, 125, 0});
-    populations.push_back({0.005f, 0.025f, 25.0f, 50000, 250});
+    //populations.push_back({0.025f, 0.085f, 5.0f, 125, 0});
+    //populations.push_back({0.005f, 0.025f, 25.0f, 50000, 250});
     std::vector<vec3> colors = params.colors;
 
     vec3 position = params.position;

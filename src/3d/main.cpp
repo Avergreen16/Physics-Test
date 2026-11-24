@@ -6,6 +6,7 @@
 
 #include "physics-objects.hpp"
 #include "terraingen.hpp"
+#include "wrapper/opengl/wrapper.hpp"
 //#include "ui.cpp"
 
 bool debug_mode = false;
@@ -307,7 +308,7 @@ void render_lines(uint camera, std::vector<vec3> points, std::vector<vec4> color
 }
 
 auto base_render = [](uint camera_entity, axiom::framebuffer& framebuffer) {
-    static auto stars = create_stars(0x100000);
+    static auto stars = create_stars(0x1000);
     static auto star_vertices = create_star_vertices(stars);
     
     axiom::disable_depth_test();
@@ -519,7 +520,7 @@ std::function<void(axiom::framebuffer&, axiom::transform3d&, mat4, mat4, float)>
 
         mesh.vertices->draw_vertices_triangles();
     }
-
+    
     auto& collector_texture_range = axiom::ecs.collectors["texture_range_mesh3d"];
 
     for(uint entity : collector_texture_range.entities) {
@@ -532,14 +533,16 @@ std::function<void(axiom::framebuffer&, axiom::transform3d&, mat4, mat4, float)>
         //
 
         texture_shader.use();
-        mesh.texture->bind(0);
+        //mesh.texture->bind(0);
+        //FLAG right here
 
         axiom::push_uniform(0, &model);
         axiom::push_uniform(1, &view);
         axiom::push_uniform(2, &proj);
         //glUniform1f(3, light_contrast);
 
-        mesh.vertices->draw_vertices_triangles();
+        //mesh.vertices->draw_vertices_triangles();
+        axiom::draw_triangles(0, 6);
     }
 
     //glDisable(GL_CULL_FACE);
@@ -547,7 +550,7 @@ std::function<void(axiom::framebuffer&, axiom::transform3d&, mat4, mat4, float)>
 
 terrain_generator gen;
 std::vector<vec3> vs;
-axiom::texture planet_texture;
+//axiom::texture planet_texture;
 
 auto visualizer_render = [](uint camera_entity, axiom::framebuffer& framebuffer) {
     axiom::transform3d& camera_transform = axiom::ecs.get_component<axiom::transform3d>(camera_entity);
@@ -748,6 +751,8 @@ auto visualizer_render = [](uint camera_entity, axiom::framebuffer& framebuffer)
 };
 
 int main(int argc, char **argv) {
+    std::cout << "x";
+
     axiom::context ctx(ivec2(256), ivec2(512), 0, "Axiom", false);
 
     axiom::ui_init();
@@ -1002,17 +1007,18 @@ int main(int argc, char **argv) {
     axiom::ecs.insert_component(camera_entity_vis, transform);
 
     // create objects
+
     world_params params {
         .radii = vec3(1200000.0f),
         .position = vec3(-5500000.0f, 800000.0f, 1000000.0f),
         .amplitude = 7500.0f,
         .tidal = true,
 
-        .num_chunks = 8,
+        .num_chunks = 3,
         .num_tiles = 16,
         
         .seed = 0xF1
-    };
+     };
     make_world(params);
     
     params = world_params{
@@ -1021,7 +1027,7 @@ int main(int argc, char **argv) {
         .amplitude = 4000.0f,
         .tidal = false,
 
-        .num_chunks = 6,
+        .num_chunks = 2,
         .num_tiles = 16,
 
         .seed = 0x7F,
@@ -1898,6 +1904,8 @@ int main(int argc, char **argv) {
         format,
         attachment, {}
     );
+
+    std::cout << "x";
 
     while (!ctx.should_close) {
         ctx.poll_events();

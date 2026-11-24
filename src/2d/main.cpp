@@ -816,12 +816,15 @@ int main(int argc, char **argv) {
     );
     
     static axiom::ui_system& ui_system = axiom::ecs.get_system<axiom::ui_system>(); 
-    
+    static axiom::physics_system2d& physics_system = axiom::ecs.get_system<axiom::physics_system2d>();
+    physics_system.sim_active = true;
+
     {
         axiom::screen_widget::insert("Axiom", axiom::color_red, &ctx);
         axiom::render_widget::insert(rt, 0, widget_callback);
         //
 
+        /*
         ui_system.buffer(vec4(4.0f));
         axiom::column_widget::insert();
         //axiom::match_widget::insert(vec4(0.35f, 0.35f, 0.35f, 0.35f), true);
@@ -1140,7 +1143,7 @@ int main(int argc, char **argv) {
                                             else do_render_grid = false;
                                         }
                                     );
-                                    */
+                                    //*
                                 }
                             },
                             {
@@ -1175,6 +1178,7 @@ int main(int argc, char **argv) {
         axiom::button_widget::insert(vec2(100, 16), axiom::color_red, "Super Secret");
         ui_system.position(axiom::position_mode::TOP_LEFT);
         ui_system.buffer(vec4(0.0f));
+        */
     }
 
     {
