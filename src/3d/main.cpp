@@ -1014,7 +1014,7 @@ int main(int argc, char **argv) {
         .amplitude = 7500.0f,
         .tidal = true,
 
-        .num_chunks = 3,
+        .num_chunks = 6,
         .num_tiles = 16,
         
         .seed = 0xF1
@@ -1027,7 +1027,7 @@ int main(int argc, char **argv) {
         .amplitude = 4000.0f,
         .tidal = false,
 
-        .num_chunks = 2,
+        .num_chunks = 6,
         .num_tiles = 16,
 
         .seed = 0x7F,
@@ -1427,16 +1427,12 @@ int main(int argc, char **argv) {
     //create_ui(camera_entity);
 
     {
-        
         ui_system.font_handler.process(render_system.resource_root + "/fonts/axiom-large.bdf", "test");
 
         axiom::screen_widget::insert("Axiom", axiom::color_red, &ctx);
-        axiom::render_widget::insert(rt, 0, widget_callback);
-
-        /*
-        axiom::split_widget::insert(axiom::layout_mode::ROW, {axiom::panel_constraint{}, axiom::panel_constraint{}});
-
+        axiom::split_widget::insert(axiom::split_layout::HORIZONTAL, {axiom::split_mode::SCALE, axiom::split_mode::SCALE});
         axiom::panel_widget::insert();
+
         ui_system.buffer(vec4(0.0f, 0.0f, 0.0f, 2.0f));
         axiom::tab_widget::insert(20, 2, {
             axiom::tab{
@@ -1454,14 +1450,14 @@ int main(int argc, char **argv) {
                     axiom::scroll_widget::insert(6.0f, true);
                     ui_system.buffer(vec4(6.0f));
 
-                    axiom::column_widget::insert();
+                    axiom::grid_widget::insert(3);
                     ui_system.position(axiom::position_mode::CENTER_LEFT);
 
                     axiom::text_widget::insert("Light Altitude", axiom::text_alignment::LEFT, false);
                     axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
 
-                    axiom::row_widget::insert();
-                    ui_system.set_attrib(vec2(0.0f, -1), vec2(FLT_MAX, -1), vec2(0.0f));
+                    //axiom::row_widget::insert();
+                    //ui_system.set_attrib(vec2(0.0f, -1), vec2(FLT_MAX, -1), vec2(0.0f));
 
                     axiom::slider_widget::insert(vec2(256.0f, 16.0f), 8.0f, axiom::color_red, vec2(-90.0f, 90.0f), 0.0f, 35.0f, "", 
                         [](axiom::slider_widget& self) {
@@ -1471,12 +1467,12 @@ int main(int argc, char **argv) {
                                 self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->altitude;
                             }
                             
-                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                            self.text.string = axiom::to_base(self.current_value, 10, 3);
                         }
                     );
-                    ui_system.set_attrib(vec2(0.0f, -1), vec2(FLT_MAX, -1), vec2(0.0f));
+                    //ui_system.set_attrib(vec2(0.0f, -1), vec2(FLT_MAX, -1), vec2(0.0f));
 
-                    ui_system.input_step();
+                    //ui_system.input_step();
 
                     axiom::text_widget::insert("Light Azimuth", axiom::text_alignment::LEFT, false);
                     axiom::spacer_widget::insert(vec2(0.0f), vec2(axiom::max_float));
@@ -1488,7 +1484,7 @@ int main(int argc, char **argv) {
                                 self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->azimuth;
                             }
                             
-                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                            self.text.string = axiom::to_base(self.current_value, 10, 3);
                         }
                     );
                     
@@ -1502,7 +1498,7 @@ int main(int argc, char **argv) {
                                 self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->contrast;
                             }
 
-                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                            self.text.string = axiom::to_base(self.current_value, 10, 3);
                         }
                     );
                     
@@ -1516,7 +1512,7 @@ int main(int argc, char **argv) {
                                 self.current_value = 1.0f / axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->base_pixel_size;
                             }
 
-                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                            self.text.string = axiom::to_base(self.current_value, 10, 3);
                         }
                     );
                     
@@ -1530,7 +1526,7 @@ int main(int argc, char **argv) {
                                 self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->cascade_factor;
                             }
 
-                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                            self.text.string = axiom::to_base(self.current_value, 10, 3);
                         }
                     );
                     
@@ -1544,7 +1540,7 @@ int main(int argc, char **argv) {
                                 self.current_value = axiom::ecs.get_system<axiom::render_system>().shadow_renderers[0]->blend_radius;
                             }
 
-                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                            self.text.string = axiom::to_base(self.current_value, 10, 3);
                         }
                     );
                     
@@ -1587,7 +1583,7 @@ int main(int argc, char **argv) {
                                 self.current_value = axiom::ecs.get_system<axiom::physics_system3d>().substeps;
                             }
                             
-                            self.text[0]->string = axiom::to_base(int64_t(self.current_value), 10);
+                            self.text.string = axiom::to_base(int64_t(self.current_value), 10);
                         }
                     );
 
@@ -1601,7 +1597,7 @@ int main(int argc, char **argv) {
                                 self.current_value = axiom::ecs.get_system<axiom::physics_system3d>().iterations;
                             }
                             
-                            self.text[0]->string = axiom::to_base(int64_t(self.current_value), 10);
+                            self.text.string = axiom::to_base(int64_t(self.current_value), 10);
                         }
                     );
                     
@@ -1615,14 +1611,14 @@ int main(int argc, char **argv) {
                                 self.current_value = axiom::ecs.get_system<axiom::physics_system3d>().fps;
                             }
                             
-                            self.text[0]->string = axiom::to_base(self.current_value, 10, 3);
+                            self.text.string = axiom::to_base(self.current_value, 10, 3);
                         }
                     );
                 }
             }
         });
 
-        ui_system.input_step();
+        ui_system.input_step(2);
         
         ui_system.buffer(vec4(0.0f));
         axiom::panel_widget::insert();
@@ -1687,10 +1683,10 @@ int main(int argc, char **argv) {
                     update = false;
 
                     if(physics->sim_active) {
-                        auto prev_children = parent_widget->children;
-                        parent_widget->children = {self.self};
+                        auto prev_children = parent_widget->container()->container()->children;
+                        parent_widget->container()->children = {self.self};
                         for(ulong child : prev_children) {
-                            if(find(parent_widget->children.begin(), parent_widget->children.end(), child) == parent_widget->children.end()) {
+                            if(find(parent_widget->container()->children.begin(), parent_widget->container()->children.end(), child) == parent_widget->container()->children.end()) {
                                 ui_system.widgets.erase(child);
                             }
                         }
@@ -1712,8 +1708,8 @@ int main(int argc, char **argv) {
                             }
                         );
 
-                        parent_widget->children.pop_back();
-                        parent_widget->children.insert(parent_widget->children.begin(), continue_button);
+                        parent_widget->container()->children.pop_back();
+                        parent_widget->container()->children.insert(parent_widget->container()->children.begin(), continue_button);
                         
                         //
 
@@ -1725,8 +1721,8 @@ int main(int argc, char **argv) {
                             }
                         );
 
-                        parent_widget->children.pop_back();
-                        parent_widget->children.insert(parent_widget->children.begin(), step_button);
+                        parent_widget->container()->children.pop_back();
+                        parent_widget->container()->children.insert(parent_widget->container()->children.begin(), step_button);
                         
                         self.icon = vec4(16, 112, 16, 16);
                     }
@@ -1819,7 +1815,6 @@ int main(int argc, char **argv) {
         axiom::button_widget::insert(vec2(100, 16), axiom::color_red, "Super Secret");
         ui_system.position(axiom::position_mode::TOP_LEFT);
         ui_system.buffer(vec4(0.0f));
-        */
     }
 
     {
